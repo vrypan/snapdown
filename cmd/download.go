@@ -17,7 +17,7 @@ var (
 // downloadCmd represents the download command
 var downloadCmd = &cobra.Command{
 	Use:   "download",
-	Short: "A brief description of your command",
+	Short: "Download the current snapshot",
 	Long:  ``,
 	Run:   downloadRun,
 }
