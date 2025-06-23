@@ -16,10 +16,11 @@ var (
 
 // downloadCmd represents the download command
 var downloadCmd = &cobra.Command{
-	Use:   "download",
-	Short: "Download the current snapshot",
-	Long:  ``,
-	Run:   downloadRun,
+	Use:     "download",
+	Aliases: []string{"d"},
+	Short:   "Download the current snapshot",
+	Long:    ``,
+	Run:     downloadRun,
 }
 
 func downloadRun(cmd *cobra.Command, args []string) {
@@ -36,11 +37,13 @@ func downloadRun(cmd *cobra.Command, args []string) {
 	if endpoint != "" {
 		endpointURL = endpoint
 	}
+	sizeChecks, _ := cmd.Flags().GetBool("size-checks")
 
-	progressChan := make(chan downloader.ProgressUpdate, 100)
+	progressChan := make(chan downloader.ProgressUpdate, 1000)
 	shardMetadata := make(map[int]*downloader.Metadata)
 	downloader.EndpointURL = endpointURL
 	downloader.ProgressChan = progressChan
+	downloader.CheckSizes = sizeChecks
 
 	for shard := 0; shard < 3; shard++ {
 		metadata, err := downloader.ShardMetadata(endpointURL, shard)
@@ -71,4 +74,5 @@ func init() {
 	downloadCmd.Flags().IntP("jobs", "j", 5, "Number of concurrent downloads.")
 	downloadCmd.Flags().StringP("output", "o", "./snapshot", "Output directory")
 	downloadCmd.Flags().String("endpoint", endpointURL, "Snapshot server URL")
+	downloadCmd.Flags().Bool("size-checks", true, "If a chunk exists locally, check its size against the remote one.")
 }

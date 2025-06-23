@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 	// replace with actual module name
 )
 
@@ -17,11 +16,14 @@ var (
 	OutputBasePath = "downloaded_chunks"
 	EndpointURL    string
 	ProgressChan   chan<- ProgressUpdate
+	CheckSizes     = true
 )
 
 type ProgressUpdate struct {
+	Shard     int
 	ChunkName string
 	Percent   float64
+	Done      bool
 }
 
 type Metadata struct {
@@ -50,6 +52,9 @@ func isLocalFileComplete(localPath, remoteURL string) (bool, error) {
 	info, err := os.Stat(localPath)
 	if err != nil {
 		return false, err
+	}
+	if !CheckSizes {
+		return true, nil
 	}
 	localSize := info.Size()
 	resp, err := http.Head(remoteURL)
@@ -84,54 +89,28 @@ func Download(shard int, metadata *Metadata) {
 			defer wg.Done()
 			defer func() { <-sem }() // release slot
 			url := fmt.Sprintf("%s/%s", baseURL, chunk)
-			progressChan <- ProgressUpdate{ChunkName: chunk, Percent: 0.0}
-			if err := downloadChunk2(url, filepath.Join(outputDir, chunk), progressChan, chunk); err != nil {
+			progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 0.0}
+			if err := downloadChunk2(shard, url, filepath.Join(outputDir, chunk), progressChan, chunk); err != nil {
 				fmt.Printf("  [!] Error downloading %s: %v\n", chunk, err)
 			}
 			// This will instruct the UI to remove this chunk from its list
-			time.Sleep(100 * time.Millisecond)
-			progressChan <- ProgressUpdate{ChunkName: chunk, Percent: 200.0}
+			// time.Sleep(100 * time.Millisecond)
+			progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 1.0, Done: true}
 		}(chunk, i)
 	}
 
 	wg.Wait()
+	progressChan <- ProgressUpdate{Shard: shard, ChunkName: "all", Percent: 1.0, Done: true}
 }
 
-func downloadChunk(url, path string) error {
-	if _, err := os.Stat(path); err == nil {
-		match, err := isLocalFileComplete(path, url)
-		if err != nil {
-			return fmt.Errorf("  [!] Error checking remote remote file: %v\n", err)
-		} else if match {
-			return nil
-		}
-	}
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("http get failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	out, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("create file failed: %w", err)
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
-
-	return err
-}
-
-func downloadChunk2(url, path string, progressChan chan<- ProgressUpdate, chunkName string) error {
+func downloadChunk2(shard int, url, path string, progressChan chan<- ProgressUpdate, chunkName string) error {
 	if _, err := os.Stat(path); err == nil {
 		match, err := isLocalFileComplete(path, url)
 		if err != nil {
 			return fmt.Errorf("  [!] Error checking remote file: %v\n", err)
 		} else if match {
 			// Send complete progress for skipped files
-			progressChan <- ProgressUpdate{ChunkName: chunkName, Percent: 1.0}
+			progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunkName, Percent: 1.0, Done: true}
 			return nil
 		}
 	}
@@ -166,7 +145,7 @@ func downloadChunk2(url, path string, progressChan chan<- ProgressUpdate, chunkN
 			}
 			downloaded += int64(n)
 			percent := float64(downloaded) / float64(total)
-			progressChan <- ProgressUpdate{ChunkName: chunkName, Percent: percent}
+			progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunkName, Percent: percent}
 		}
 		if err != nil {
 			if err == io.EOF {
@@ -177,7 +156,7 @@ func downloadChunk2(url, path string, progressChan chan<- ProgressUpdate, chunkN
 	}
 
 	// Ensure final update is 100%
-	progressChan <- ProgressUpdate{ChunkName: chunkName, Percent: 1.0}
+	progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunkName, Percent: 1.0}
 
 	return nil
 }

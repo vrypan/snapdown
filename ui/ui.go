@@ -10,17 +10,23 @@ import (
 	"github.com/vrypan/snapsnapdown/downloader"
 )
 
-type Model struct {
-	ShardQueue       []int
-	CurrentShard     int
-	ShardMetadata    map[int]*downloader.Metadata
+type ShardStatus struct {
 	TotalChunks      int
 	DownloadedChunks int
 	ActiveChunks     map[string]float64
-	progressChan     <-chan downloader.ProgressUpdate
-	Progress         progress.Model
-	miniProgress     progress.Model
+	Downloaded       map[string]bool
 }
+type Model struct {
+	ShardQueue    []int
+	CurrentShard  int
+	ShardMetadata map[int]*downloader.Metadata
+	Status        map[int]*ShardStatus
+	progressChan  <-chan downloader.ProgressUpdate
+	Progress      progress.Model
+	miniProgress  progress.Model
+}
+
+type cleanupMsg bool
 
 var bold = lipgloss.NewStyle().Bold(true)
 
@@ -37,20 +43,25 @@ func NewModel(shard int, metadata map[int]*downloader.Metadata, progressChan <-c
 	p2.Width = 80
 	p2.ShowPercentage = true
 
-	activeChunks := make(map[string]float64)
 	shards := []int{0, 1, 2}
 	currentShard := shards[0]
-
+	status := make(map[int]*ShardStatus, 3)
+	for i := range shards {
+		shrd := ShardStatus{}
+		shrd.ActiveChunks = make(map[string]float64)
+		shrd.TotalChunks = len(metadata[i].Chunks)
+		shrd.DownloadedChunks = 0
+		shrd.Downloaded = make(map[string]bool)
+		status[i] = &shrd
+	}
 	return Model{
-		ShardQueue:       shards,
-		CurrentShard:     currentShard,
-		ShardMetadata:    metadata,
-		TotalChunks:      len(metadata[currentShard].Chunks),
-		DownloadedChunks: 0,
-		ActiveChunks:     activeChunks,
-		progressChan:     progressChan,
-		Progress:         p,
-		miniProgress:     p2,
+		ShardQueue:    shards,
+		CurrentShard:  currentShard,
+		ShardMetadata: metadata,
+		Status:        status,
+		progressChan:  progressChan,
+		Progress:      p,
+		miniProgress:  p2,
 	}
 }
 
@@ -60,13 +71,12 @@ func (m Model) Init() tea.Cmd {
 
 func waitForUpdates(ch <-chan downloader.ProgressUpdate) tea.Cmd {
 	return func() tea.Msg {
-		return downloader.ProgressUpdate(<-ch)
+		return <-ch
 	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "esc", "ctrl+c":
@@ -74,55 +84,81 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case downloader.ProgressUpdate:
-		if msg.Percent <= 1.0 {
-			m.ActiveChunks[msg.ChunkName] = msg.Percent
-		} else {
-			m.DownloadedChunks += 1
-			delete(m.ActiveChunks, msg.ChunkName)
-		}
-		if m.DownloadedChunks == m.TotalChunks {
-			fmt.Println()
-			if len(m.ShardQueue) > 0 {
-				m.ShardQueue = m.ShardQueue[1:]
-				m.CurrentShard = m.ShardQueue[0]
-				m.TotalChunks = len(m.ShardMetadata[m.CurrentShard].Chunks)
-				m.DownloadedChunks = 0
-				return m, m.downloadShardCmd(m.CurrentShard, m.ShardMetadata[m.CurrentShard])
-			} else {
-				return m, tea.Quit
+		status := m.Status[msg.Shard]
+		if msg.Done {
+			if !status.Downloaded[msg.ChunkName] {
+				status.Downloaded[msg.ChunkName] = true
+				status.DownloadedChunks++
+			}
+			delete(status.ActiveChunks, msg.ChunkName)
+		} else if msg.ChunkName != "all" {
+			status.ActiveChunks[msg.ChunkName] = msg.Percent
+			if status.Downloaded[msg.ChunkName] {
+				// If it was already completed before being registered, clean it up now
+				delete(status.ActiveChunks, msg.ChunkName)
 			}
 		}
+		if msg.ChunkName == "all" {
+			if len(m.ShardQueue) > 1 {
+				m.ShardQueue = m.ShardQueue[1:]
+				m.CurrentShard = m.ShardQueue[0]
+				go downloader.Download(m.CurrentShard, m.ShardMetadata[m.CurrentShard])
+				return m, waitForUpdates(m.progressChan)
+			}
+			return m, tea.Batch(
+				func() tea.Msg { return cleanupMsg(true) },
+				waitForUpdates(m.progressChan),
+			)
+		}
 		return m, waitForUpdates(m.progressChan)
+	case cleanupMsg:
+		for _, shard := range m.Status {
+			for c := range shard.ActiveChunks {
+				if shard.Downloaded[c] {
+					delete(shard.ActiveChunks, c)
+					shard.DownloadedChunks++
+				}
+			}
+		}
+		return m, tea.Batch(
+			func() tea.Msg { return cleanupMsg(true) },
+			waitForUpdates(m.progressChan),
+		)
 	}
-
 	return m, waitForUpdates(m.progressChan)
 }
 
 func (m Model) downloadShardCmd(shard int, metadata *downloader.Metadata) tea.Cmd {
-
-	go downloader.Download(shard, metadata) // Start download in background.
-	return waitForUpdates(m.progressChan)   // Immediately start listening for updates.
+	go downloader.Download(shard, metadata)
+	return waitForUpdates(m.progressChan)
 }
+
 func (m Model) View() string {
 	s := ""
-	s += bold.Render(fmt.Sprintf("Shard %02d ", m.CurrentShard))
-	percent := float64(m.DownloadedChunks) / float64(m.TotalChunks)
-	bar := m.Progress.ViewAs(percent)
-	s += fmt.Sprintf(" %04d/%04d chunks %s", m.DownloadedChunks, m.TotalChunks, bar)
+	for i := 0; i < 3; i++ {
+		s += bold.Render(fmt.Sprintf("Shard %02d ", i))
+		percent := 0.0
+		if m.Status[i].TotalChunks > 0 {
+			percent = float64(m.Status[i].DownloadedChunks) / float64(m.Status[i].TotalChunks)
+		}
+		bar := m.Progress.ViewAs(percent)
+		s += fmt.Sprintf(" %04d/%04d chunks %s", m.Status[i].DownloadedChunks, m.Status[i].TotalChunks, bar)
 
-	if len(m.ActiveChunks) > 0 {
-		s += "\n\n"
-		keys := make([]string, 0, len(m.ActiveChunks))
-		for key := range m.ActiveChunks {
-			keys = append(keys, key)
+		if len(m.Status[i].ActiveChunks) > 0 {
+			s += "\n\n"
+			keys := make([]string, 0, len(m.Status[i].ActiveChunks))
+			for key := range m.Status[i].ActiveChunks {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			for _, key := range keys {
+				v := m.Status[i].ActiveChunks[key]
+				s += fmt.Sprintf("          • %s %s\n", key, m.miniProgress.ViewAs(v))
+			}
+			s += "\n"
+		} else {
+			s += "\n"
 		}
-		sort.Strings(keys)
-		for _, key := range keys {
-			v := m.ActiveChunks[key]
-			s += fmt.Sprintf("          • %s %s\n", key, m.miniProgress.ViewAs(v))
-		}
-	} else {
-		s += "\n"
 	}
 	return s
 }
