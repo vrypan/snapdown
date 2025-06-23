@@ -11,7 +11,9 @@ import (
 )
 
 type Model struct {
-	Shard            int
+	ShardQueue       []int
+	CurrentShard     int
+	ShardMetadata    map[int]*downloader.Metadata
 	TotalChunks      int
 	DownloadedChunks int
 	ActiveChunks     map[string]float64
@@ -22,7 +24,7 @@ type Model struct {
 
 var bold = lipgloss.NewStyle().Bold(true)
 
-func NewModel(shard int, totalChunks int, progressChan <-chan downloader.ProgressUpdate) Model {
+func NewModel(shard int, metadata map[int]*downloader.Metadata, progressChan <-chan downloader.ProgressUpdate) Model {
 	p := progress.New(progress.WithSolidFill("#00ff00"))
 	p.Full = '■'
 	p.Empty = ' '
@@ -35,11 +37,17 @@ func NewModel(shard int, totalChunks int, progressChan <-chan downloader.Progres
 	p2.Width = 80
 	p2.ShowPercentage = true
 
+	activeChunks := make(map[string]float64)
+	shards := []int{0, 1, 2}
+	currentShard := shards[0]
+
 	return Model{
-		Shard:            shard,
-		TotalChunks:      totalChunks,
+		ShardQueue:       shards,
+		CurrentShard:     currentShard,
+		ShardMetadata:    metadata,
+		TotalChunks:      len(metadata[currentShard].Chunks),
 		DownloadedChunks: 0,
-		ActiveChunks:     make(map[string]float64),
+		ActiveChunks:     activeChunks,
 		progressChan:     progressChan,
 		Progress:         p,
 		miniProgress:     p2,
@@ -47,9 +55,7 @@ func NewModel(shard int, totalChunks int, progressChan <-chan downloader.Progres
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(
-		waitForUpdates(m.progressChan),
-	)
+	return m.downloadShardCmd(m.CurrentShard, m.ShardMetadata[m.CurrentShard])
 }
 
 func waitForUpdates(ch <-chan downloader.ProgressUpdate) tea.Cmd {
@@ -68,7 +74,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case downloader.ProgressUpdate:
-
 		if msg.Percent <= 1.0 {
 			m.ActiveChunks[msg.ChunkName] = msg.Percent
 		} else {
@@ -76,17 +81,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			delete(m.ActiveChunks, msg.ChunkName)
 		}
 		if m.DownloadedChunks == m.TotalChunks {
-			return m, tea.Quit
+			fmt.Println()
+			if len(m.ShardQueue) > 0 {
+				m.ShardQueue = m.ShardQueue[1:]
+				m.CurrentShard = m.ShardQueue[0]
+				m.TotalChunks = len(m.ShardMetadata[m.CurrentShard].Chunks)
+				m.DownloadedChunks = 0
+				return m, m.downloadShardCmd(m.CurrentShard, m.ShardMetadata[m.CurrentShard])
+			} else {
+				return m, tea.Quit
+			}
 		}
 		return m, waitForUpdates(m.progressChan)
 	}
 
-	return m, nil
+	return m, waitForUpdates(m.progressChan)
 }
 
+func (m Model) downloadShardCmd(shard int, metadata *downloader.Metadata) tea.Cmd {
+
+	go downloader.Download(shard, metadata) // Start download in background.
+	return waitForUpdates(m.progressChan)   // Immediately start listening for updates.
+}
 func (m Model) View() string {
 	s := ""
-	s += bold.Render(fmt.Sprintf("Shard %02d ", m.Shard))
+	s += bold.Render(fmt.Sprintf("Shard %02d ", m.CurrentShard))
 	percent := float64(m.DownloadedChunks) / float64(m.TotalChunks)
 	bar := m.Progress.ViewAs(percent)
 	s += fmt.Sprintf(" %04d/%04d chunks %s", m.DownloadedChunks, m.TotalChunks, bar)
@@ -100,8 +119,6 @@ func (m Model) View() string {
 		sort.Strings(keys)
 		for _, key := range keys {
 			v := m.ActiveChunks[key]
-
-			//s += fmt.Sprintf("        :: %s  %s\n", key, m.miniProgress.ViewAs(v))
 			s += fmt.Sprintf("          • %s %s\n", key, m.miniProgress.ViewAs(v))
 		}
 	} else {

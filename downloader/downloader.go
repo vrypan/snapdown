@@ -15,6 +15,8 @@ import (
 var (
 	Concurrency    = 5
 	OutputBasePath = "downloaded_chunks"
+	EndpointURL    string
+	ProgressChan   chan<- ProgressUpdate
 )
 
 type ProgressUpdate struct {
@@ -64,9 +66,9 @@ func isLocalFileComplete(localPath, remoteURL string) (bool, error) {
 	return localSize == remoteSize, nil
 }
 
-func Download(endpointURL string, shard int, metadata *Metadata, progressChan chan<- ProgressUpdate) {
-
-	baseURL := fmt.Sprintf("%s/%s", endpointURL, metadata.KeyBase)
+func Download(shard int, metadata *Metadata) {
+	progressChan := ProgressChan
+	baseURL := fmt.Sprintf("%s/%s", EndpointURL, metadata.KeyBase)
 	outputDir := filepath.Join(OutputBasePath, fmt.Sprintf("shard-%d", shard))
 	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
 		fmt.Printf("Error creating output directory: %v\n", err)

@@ -38,30 +38,32 @@ func downloadRun(cmd *cobra.Command, args []string) {
 	}
 
 	progressChan := make(chan downloader.ProgressUpdate, 100)
+	shardMetadata := make(map[int]*downloader.Metadata)
+	downloader.EndpointURL = endpointURL
+	downloader.ProgressChan = progressChan
 
-	fmt.Printf("\nSnapchain Snapshot Downloader\n")
-	fmt.Printf("Download path: %s\n\n", downloader.OutputBasePath)
 	for shard := 0; shard < 3; shard++ {
 		metadata, err := downloader.ShardMetadata(endpointURL, shard)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		m := ui.NewModel(shard, len(metadata.Chunks), progressChan)
-		p := tea.NewProgram(m)
+		shardMetadata[shard] = metadata
+	}
+	fmt.Printf("\nSnapchain Snapshot Downloader\n")
+	fmt.Printf("Download path: %s\n\n", downloader.OutputBasePath)
 
-		defer func() {
-			if err := p.ReleaseTerminal(); err != nil {
-				fmt.Println("failed to restore terminal:", err)
-			}
-		}()
-		go func() {
-			downloader.Download(endpointURL, shard, metadata, progressChan)
-		}()
+	m := ui.NewModel(0, shardMetadata, progressChan)
+	p := tea.NewProgram(m)
 
-		if err := p.Start(); err != nil {
-			fmt.Println("error:", err)
+	defer func() {
+		if err := p.ReleaseTerminal(); err != nil {
+			fmt.Println("failed to restore terminal:", err)
 		}
+	}()
+
+	if err := p.Start(); err != nil {
+		fmt.Println("error:", err)
 	}
 }
 func init() {
