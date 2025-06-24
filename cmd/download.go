@@ -56,7 +56,7 @@ func downloadRun(cmd *cobra.Command, args []string) {
 	fmt.Printf("\nSnapchain Snapshot Downloader\n")
 	fmt.Printf("Download path: %s\n\n", downloader.OutputBasePath)
 
-	m := ui.NewModel(0, shardMetadata, progressChan)
+	m := ui.NewDownloadModel(0, shardMetadata, progressChan)
 	p := tea.NewProgram(m)
 
 	defer func() {

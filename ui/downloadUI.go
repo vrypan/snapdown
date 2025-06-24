@@ -16,7 +16,7 @@ type ShardStatus struct {
 	ActiveChunks     map[string]float64
 	Downloaded       map[string]bool
 }
-type Model struct {
+type DownloadModel struct {
 	ShardQueue    []int
 	CurrentShard  int
 	ShardMetadata map[int]*downloader.Metadata
@@ -30,7 +30,7 @@ type cleanupMsg bool
 
 var bold = lipgloss.NewStyle().Bold(true)
 
-func NewModel(shard int, metadata map[int]*downloader.Metadata, progressChan <-chan downloader.ProgressUpdate) Model {
+func NewDownloadModel(shard int, metadata map[int]*downloader.Metadata, progressChan <-chan downloader.ProgressUpdate) DownloadModel {
 	p := progress.New(progress.WithSolidFill("#00ff00"))
 	p.Full = '■'
 	p.Empty = ' '
@@ -54,7 +54,7 @@ func NewModel(shard int, metadata map[int]*downloader.Metadata, progressChan <-c
 		shrd.Downloaded = make(map[string]bool)
 		status[i] = &shrd
 	}
-	return Model{
+	return DownloadModel{
 		ShardQueue:    shards,
 		CurrentShard:  currentShard,
 		ShardMetadata: metadata,
@@ -65,7 +65,7 @@ func NewModel(shard int, metadata map[int]*downloader.Metadata, progressChan <-c
 	}
 }
 
-func (m Model) Init() tea.Cmd {
+func (m DownloadModel) Init() tea.Cmd {
 	return m.downloadShardCmd(m.CurrentShard, m.ShardMetadata[m.CurrentShard])
 }
 
@@ -75,7 +75,7 @@ func waitForUpdates(ch <-chan downloader.ProgressUpdate) tea.Cmd {
 	}
 }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m DownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -128,12 +128,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, waitForUpdates(m.progressChan)
 }
 
-func (m Model) downloadShardCmd(shard int, metadata *downloader.Metadata) tea.Cmd {
+func (m DownloadModel) downloadShardCmd(shard int, metadata *downloader.Metadata) tea.Cmd {
 	go downloader.Download(shard, metadata)
 	return waitForUpdates(m.progressChan)
 }
 
-func (m Model) View() string {
+func (m DownloadModel) View() string {
 	s := ""
 	for i := 0; i < 3; i++ {
 		s += bold.Render(fmt.Sprintf("Shard %02d ", i))
