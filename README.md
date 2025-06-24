@@ -20,11 +20,27 @@ Move it to a directoryt in your `$PATH`.
 
 If you want to build from source, clone the repo an run `make`
 
-Check: `snapsnapdown version`
+Check it has been installed in your PATH:
+
+```
+snapsnapdown version
+```
+
+To see all options 
+```
+snapsnapdown --help
+```
 
 ## 2. Download the snapshot
 
-Use `snapsnapdown download` to download the snapshot arhive to `./snapshot`. Or `snapsnapdown download --help` for more options.
+Use 
+```
+snapsnapdown download
+```
+
+to download the snapshot arhive to `./snapshot`.
+
+Or `snapsnapdown download --help` for more options.
 
 
 ## 3. Extract the snapshot
