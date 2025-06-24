@@ -18,7 +18,54 @@ For each shard (0,1,2), you fetch
 It looks like this (shards 1 and 2 have ~1600 chunks):
 
 ```json
-{"key_base":"FARCASTER_NETWORK_MAINNET/0/snapshot-2025-06-24-1750741283.tar.gz","chunks":["chunk_0001.bin","chunk_0002.bin","chunk_0003.bin","chunk_0004.bin","chunk_0005.bin","chunk_0006.bin","chunk_0007.bin","chunk_0008.bin","chunk_0009.bin","chunk_0010.bin","chunk_0011.bin","chunk_0012.bin","chunk_0013.bin","chunk_0014.bin","chunk_0015.bin","chunk_0016.bin","chunk_0017.bin","chunk_0018.bin","chunk_0019.bin","chunk_0020.bin","chunk_0021.bin","chunk_0022.bin","chunk_0023.bin","chunk_0024.bin","chunk_0025.bin","chunk_0026.bin","chunk_0027.bin","chunk_0028.bin","chunk_0029.bin","chunk_0030.bin","chunk_0031.bin","chunk_0032.bin","chunk_0033.bin","chunk_0034.bin","chunk_0035.bin","chunk_0036.bin","chunk_0037.bin","chunk_0038.bin","chunk_0039.bin","chunk_0040.bin","chunk_0041.bin","chunk_0042.bin"],"timestamp":1750741283744}
+{
+  "key_base": "FARCASTER_NETWORK_MAINNET/0/snapshot-2025-06-24-1750741283.tar.gz",
+  "chunks": [
+    "chunk_0001.bin",
+    "chunk_0002.bin",
+    "chunk_0003.bin",
+    "chunk_0004.bin",
+    "chunk_0005.bin",
+    "chunk_0006.bin",
+    "chunk_0007.bin",
+    "chunk_0008.bin",
+    "chunk_0009.bin",
+    "chunk_0010.bin",
+    "chunk_0011.bin",
+    "chunk_0012.bin",
+    "chunk_0013.bin",
+    "chunk_0014.bin",
+    "chunk_0015.bin",
+    "chunk_0016.bin",
+    "chunk_0017.bin",
+    "chunk_0018.bin",
+    "chunk_0019.bin",
+    "chunk_0020.bin",
+    "chunk_0021.bin",
+    "chunk_0022.bin",
+    "chunk_0023.bin",
+    "chunk_0024.bin",
+    "chunk_0025.bin",
+    "chunk_0026.bin",
+    "chunk_0027.bin",
+    "chunk_0028.bin",
+    "chunk_0029.bin",
+    "chunk_0030.bin",
+    "chunk_0031.bin",
+    "chunk_0032.bin",
+    "chunk_0033.bin",
+    "chunk_0034.bin",
+    "chunk_0035.bin",
+    "chunk_0036.bin",
+    "chunk_0037.bin",
+    "chunk_0038.bin",
+    "chunk_0039.bin",
+    "chunk_0040.bin",
+    "chunk_0041.bin",
+    "chunk_0042.bin"
+  ],
+  "timestamp": 1750741283744
+}
 ```
 
 ## Step 2
