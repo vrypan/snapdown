@@ -53,7 +53,7 @@ func downloadRun(cmd *cobra.Command, args []string) {
 		}
 		shardMetadata[shard] = metadata
 	}
-	fmt.Printf("\nSnapchain Snapshot Downloader\n")
+	fmt.Printf("\nDownloading Snapshot\n")
 	fmt.Printf("Download path: %s\n\n", downloader.OutputBasePath)
 
 	m := ui.NewDownloadModel(0, shardMetadata, progressChan)

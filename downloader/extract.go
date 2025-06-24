@@ -17,6 +17,7 @@ type XUpdMsg struct {
 	File       string
 	TotalBytes int64
 	Error      error
+	Quit       bool
 }
 
 // chainedFileReader implements io.Reader by reading sequentially from a list of files.

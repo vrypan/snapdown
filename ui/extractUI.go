@@ -55,6 +55,13 @@ func (m ExtractModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case downloader.XUpdMsg:
+		if msg.Error != nil {
+			m.error = msg.Error
+			return m, tea.Quit
+		}
+		if msg.Quit {
+			return m, tea.Quit
+		}
 		m.CurrentShard = msg.Shard
 		m.CurrentFile = msg.File
 		m.ShardChuncks[msg.Shard] = msg.Total
