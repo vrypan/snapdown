@@ -38,7 +38,7 @@ snapsnapdown extract ./snapshot .rocks
 ```
 
 
-### Extract manually
+### Alternative method: Extract manually
 
 You can manually extract the archive, using `tar` if you prefer. 
 
