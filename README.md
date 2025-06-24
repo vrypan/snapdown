@@ -12,32 +12,49 @@ before starting a new snapchain node.
 - Concurrent chunk downloads: I have found that sometimes a chunk may download at very low speeds, having concurrent downloads removes the bottleneck and results in faster overall download.
 - Downloaded chunks are not automatically deleted.
 
-## Usage
+## 1. Install
 
-1. Download, and unzip [the binary that corresponds to your platform](https://github.com/vrypan/snapsnapdown/releases)
-2. Run `./snapsnapdown download` (`./snapsnapdown download --help` for options)
+Download, and unzip [the binary that corresponds to your platform](https://github.com/vrypan/snapsnapdown/releases)
+
+Move it to a directoryt in your `$PATH`. 
+
+If you want to build from source, clone the repo an run `make`
+
+Check: `snapsnapdown version`
+
+## 2. Download the snapshot
+
+Use `snapsnapdown download` to download the snapshot arhive to `./snapshot`. Or `snapsnapdown download --help` for more options.
 
 
-If you want to build from source, clone the repo an type `make`
+## 3. Extract the snapshot
 
-## After the all chuncks have been downloaded
+The snapshot must be extracted to the `.rocks` directory relative to where you will run your docker container.
 
-**The next version of `snapsnapdown` will offer archive extraction too, but until then:**
+Use something like (adjust paths, if your setup is different)
 
-The downloaded chunks will probably be in `./snapshot/shard-*`, unless you specified a different directory when downloading.
+```
+snapsnapdown extract ./snapshot .rocks
+```
+
+
+### Extract manually
+
+You can manually extract the archive, using `tar` if you prefer. 
 
 You can test the data integrity using the following command (check with shards 0, 1 2)
 ```
 cat ./snapshot/shard-0/* | tar tzvf -
 ```
 
-If no error is reported, you can extract the snapshot to `.rocks` like this
+If no error is reported, you can extract the snapshot to `.rocks` like this (and repeat for shards 1 and 2!!!)
 
 ```
 cat ./snapshot/shard-0/* | tar tzvf - -C .rocks/
 ```
-**Repeat for `shard-1` and `shard-2`!!!**
+
+## 4. After extractiing the snapshot
 
 Now you can start your node and it will pick up syncing where the snapshot left it.
 
-You should probably remove the downloaded chunks with `rm -rf ./snapshot`
+You will probably want to remove the downloaded chunks with `rm -rf ./snapshot` to free space on your disk.
