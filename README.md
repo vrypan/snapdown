@@ -53,6 +53,11 @@ Use something like (adjust paths, if your setup is different)
 snapsnapdown extract ./snapshot .rocks
 ```
 
+You can also extract only one shard if you want. Check the options with
+```
+snapsnapdown extract --help
+```
+
 
 ### Alternative method: Extract manually
 
