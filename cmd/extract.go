@@ -38,6 +38,10 @@ func extractRun(cmd *cobra.Command, args []string) {
 		cmd.Help()
 		os.Exit(1)
 	}
+	if !downloader.HasTarInPath() {
+		fmt.Println("Error: 'tar' not found in PATH.")
+		os.Exit(1)
+	}
 	srcDir := args[0]
 	dstDir := args[1]
 	progressCh := make(chan downloader.XUpdMsg, 1000)
@@ -47,7 +51,7 @@ func extractRun(cmd *cobra.Command, args []string) {
 
 	go func() {
 		for _, shard := range shards {
-			downloader.Extract(srcDir, dstDir, shard, progressCh)
+			downloader.ExtractWithNativeTar(srcDir, dstDir, shard, progressCh)
 		}
 		progressCh <- downloader.XUpdMsg{Quit: true}
 	}()

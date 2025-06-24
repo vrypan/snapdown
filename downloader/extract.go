@@ -38,6 +38,7 @@ func (r *chainedFileReader) CurrentFileIndex() int {
 	}
 	return r.index
 }
+
 func (r *chainedFileReader) Read(p []byte) (int, error) {
 	for {
 		if r.curr == nil {
@@ -68,10 +69,18 @@ func (r *chainedFileReader) Read(p []byte) (int, error) {
 // Extract untars and ungzips concatenated parts from srcDir into dstDir.
 func Extract(rootSrcDir, dstDir string, shardId int, progressCh chan<- XUpdMsg) {
 	var totalBytesWritten int64 = 0
+	bufferSize := getOptimalBufferSize(dstDir)
+	buf := make([]byte, bufferSize)
+
 	srcDir := filepath.Join(rootSrcDir, fmt.Sprintf("shard-%d", shardId))
 	entries, err := os.ReadDir(srcDir)
 	if err != nil {
-		panic(err)
+		progressCh <- XUpdMsg{
+			Shard: shardId,
+			Error: err,
+			Quit:  true,
+		}
+		return
 	}
 
 	fileNames := make([]string, 0, len(entries))
@@ -82,13 +91,23 @@ func Extract(rootSrcDir, dstDir string, shardId int, progressCh chan<- XUpdMsg) 
 	}
 	sort.Strings(fileNames)
 	if len(fileNames) == 0 {
-		panic("no files to extract")
+		progressCh <- XUpdMsg{
+			Shard: shardId,
+			Error: fmt.Errorf("no files to extract"),
+			Quit:  true,
+		}
+		return
 	}
 
 	reader := newChainedFileReader(fileNames)
 	gzipReader, err := gzip.NewReader(reader)
 	if err != nil {
-		panic(err)
+		progressCh <- XUpdMsg{
+			Shard: shardId,
+			Error: err,
+			Quit:  true,
+		}
+		return
 	}
 	defer gzipReader.Close()
 
@@ -99,7 +118,14 @@ func Extract(rootSrcDir, dstDir string, shardId int, progressCh chan<- XUpdMsg) 
 			break
 		}
 		if err != nil {
-			panic(err)
+			progressCh <- XUpdMsg{
+				Total: len(fileNames),
+				Shard: shardId,
+				Idx:   reader.CurrentFileIndex() + 1,
+				Error: err,
+				Quit:  true,
+			}
+			return
 		}
 
 		targetPath := filepath.Join(dstDir, header.Name)
@@ -137,9 +163,11 @@ func Extract(rootSrcDir, dstDir string, shardId int, progressCh chan<- XUpdMsg) 
 				}
 				return
 			}
-			bytesOut, err := io.Copy(outFile, tarReader)
+			bytesOut, err := io.CopyBuffer(outFile, tarReader, buf)
+			if closeErr := outFile.Close(); closeErr != nil && err == nil {
+				err = closeErr
+			}
 			if err != nil {
-				outFile.Close()
 				progressCh <- XUpdMsg{
 					Total:      len(fileNames),
 					Shard:      shardId,
@@ -150,9 +178,7 @@ func Extract(rootSrcDir, dstDir string, shardId int, progressCh chan<- XUpdMsg) 
 				}
 				return
 			}
-			outFile.Close()
 			totalBytesWritten += bytesOut
-			//fmt.Printf("%d %d/%d %s\n", shardId, reader.CurrentFileIndex()+1, len(fileNames), targetPath)
 			progressCh <- XUpdMsg{
 				Total:      len(fileNames),
 				Shard:      shardId,
