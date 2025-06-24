@@ -137,11 +137,6 @@ func ExtractWithNativeTar(rootSrcDir, dstDir string, shardId int, progressCh cha
 		}
 		return
 	}
-
-	progressCh <- XUpdMsg{
-		Shard: shardId,
-		Quit:  true,
-	}
 }
 
 func trackTarOutput(r io.ReadCloser, dstDir string, shardId int, progressCh chan<- XUpdMsg, wg *sync.WaitGroup) {
