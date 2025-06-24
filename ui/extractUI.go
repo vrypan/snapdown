@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -69,7 +70,7 @@ func (m ExtractModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case downloader.XUpdMsg:
 		if msg.Error != nil {
 			m.error = msg.Error
-			return m, tea.Quit
+			os.Exit(1)
 		}
 		if msg.Quit {
 			return m, tea.Quit
@@ -81,11 +82,6 @@ func (m ExtractModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.CurrentShard = msg.Shard
 			m.ShardChuncks[msg.Shard] = msg.Total
 			m.ShardChunck[msg.Shard] = msg.Idx
-		}
-
-		if msg.Error != nil {
-			m.error = msg.Error
-			return m, tea.Quit
 		}
 
 	case tea.QuitMsg:
