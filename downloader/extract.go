@@ -10,6 +10,15 @@ import (
 	"sort"
 )
 
+type XUpdMsg struct {
+	Shard      int
+	Idx        int
+	Total      int
+	File       string
+	TotalBytes int64
+	Error      error
+}
+
 // chainedFileReader implements io.Reader by reading sequentially from a list of files.
 // It ensures files are closed as soon as they're done, and reuses the buffer efficiently.
 type chainedFileReader struct {
@@ -22,6 +31,12 @@ func newChainedFileReader(files []string) *chainedFileReader {
 	return &chainedFileReader{files: files, index: 0}
 }
 
+func (r *chainedFileReader) CurrentFileIndex() int {
+	if r.index == 0 && r.curr == nil {
+		return 0
+	}
+	return r.index
+}
 func (r *chainedFileReader) Read(p []byte) (int, error) {
 	for {
 		if r.curr == nil {
@@ -50,7 +65,9 @@ func (r *chainedFileReader) Read(p []byte) (int, error) {
 }
 
 // Extract untars and ungzips concatenated parts from srcDir into dstDir.
-func Extract(srcDir, dstDir string) {
+func Extract(rootSrcDir, dstDir string, shardId int, progressCh chan<- XUpdMsg) {
+	var totalBytesWritten int64 = 0
+	srcDir := filepath.Join(rootSrcDir, fmt.Sprintf("shard-%d", shardId))
 	entries, err := os.ReadDir(srcDir)
 	if err != nil {
 		panic(err)
@@ -88,22 +105,61 @@ func Extract(srcDir, dstDir string) {
 		switch header.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(targetPath, os.FileMode(header.Mode)); err != nil {
-				panic(err)
+				progressCh <- XUpdMsg{
+					Total: len(fileNames),
+					Shard: shardId,
+					Idx:   reader.CurrentFileIndex() + 1,
+					File:  targetPath,
+					Error: err,
+				}
+				return
 			}
 		case tar.TypeReg:
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-				panic(err)
+				progressCh <- XUpdMsg{
+					Total: len(fileNames),
+					Shard: shardId,
+					Idx:   reader.CurrentFileIndex() + 1,
+					File:  targetPath,
+					Error: err,
+				}
+				return
 			}
 			outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
 			if err != nil {
-				panic(err)
+				progressCh <- XUpdMsg{
+					Total: len(fileNames),
+					Shard: shardId,
+					Idx:   reader.CurrentFileIndex() + 1,
+					File:  targetPath,
+					Error: err,
+				}
+				return
 			}
-			if _, err := io.Copy(outFile, tarReader); err != nil {
+			bytesOut, err := io.Copy(outFile, tarReader)
+			if err != nil {
 				outFile.Close()
-				panic(err)
+				progressCh <- XUpdMsg{
+					Total:      len(fileNames),
+					Shard:      shardId,
+					Idx:        reader.CurrentFileIndex() + 1,
+					File:       targetPath,
+					TotalBytes: totalBytesWritten,
+					Error:      err,
+				}
+				return
 			}
 			outFile.Close()
-			fmt.Printf("x %s\n", targetPath)
+			totalBytesWritten += bytesOut
+			//fmt.Printf("%d %d/%d %s\n", shardId, reader.CurrentFileIndex()+1, len(fileNames), targetPath)
+			progressCh <- XUpdMsg{
+				Total:      len(fileNames),
+				Shard:      shardId,
+				Idx:        reader.CurrentFileIndex() + 1,
+				File:       targetPath,
+				TotalBytes: totalBytesWritten,
+			}
+
 		default:
 			continue
 		}

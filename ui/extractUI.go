@@ -2,120 +2,104 @@ package ui
 
 import (
 	"fmt"
-	"strings"
 
+	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/vrypan/snapsnapdown/downloader"
 )
 
-// Messages
-type StartChunkMsg struct {
-	Shard int
-	Chunk string
-}
-
-type FileExtractedMsg struct {
-	Shard int
-	File  string
-}
-
-type ShardCompletedMsg struct {
-	Shard int
-}
-
-// Shard progress tracker
-type ShardProgress struct {
-	TotalChunks     int
-	ExtractedChunks int
-	CurrentChunk    string
-	FilesExtracted  []string
-	Completed       bool
-}
-
 type ExtractModel struct {
-	Shards     map[int]*ShardProgress
-	ShardOrder []int
-	progressCh <-chan tea.Msg
+	MaxShard           int
+	CurrentShard       int
+	CurrentFile        string
+	ShardChuncks       map[int]int
+	ShardChunck        map[int]int
+	ShardTotalBytesOut map[int]int64
+	updatesCh          <-chan downloader.XUpdMsg
+	progressBar        progress.Model
+	error              error
 }
 
-func NewExtractModel(progressCh <-chan tea.Msg) ExtractModel {
+func NewExtractModel(maxShard int, updates <-chan downloader.XUpdMsg) ExtractModel {
+	p := progress.New(progress.WithSolidFill("#00ff00"))
+	p.Full = '■'
+	p.Empty = ' '
+	p.Width = 80
+	p.ShowPercentage = true
 	return ExtractModel{
-		Shards:     make(map[int]*ShardProgress),
-		ShardOrder: []int{},
-		progressCh: progressCh,
+		MaxShard:           maxShard,
+		CurrentShard:       0,
+		updatesCh:          updates,
+		ShardChuncks:       make(map[int]int, maxShard+1),
+		ShardChunck:        make(map[int]int, maxShard+1),
+		ShardTotalBytesOut: make(map[int]int64, maxShard+1),
+		progressBar:        p,
 	}
 }
 
-func listenProgress(ch <-chan tea.Msg) tea.Cmd {
+func listen(ch <-chan downloader.XUpdMsg) tea.Cmd {
 	return func() tea.Msg {
 		return <-ch
 	}
 }
 
 func (m ExtractModel) Init() tea.Cmd {
-	return listenProgress(m.progressCh)
+	return listen(m.updatesCh)
 }
 
 func (m ExtractModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case StartChunkMsg:
-		shard, exists := m.Shards[msg.Shard]
-		if !exists {
-			m.Shards[msg.Shard] = &ShardProgress{TotalChunks: 10} // Set total chunks here
-			m.ShardOrder = append(m.ShardOrder, msg.Shard)
-			shard = m.Shards[msg.Shard]
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "q", "esc", "ctrl+c":
+			return m, tea.Quit
 		}
-		shard.CurrentChunk = msg.Chunk
-		shard.ExtractedChunks++
-
-	case FileExtractedMsg:
-		shard := m.Shards[msg.Shard]
-		shard.FilesExtracted = append(shard.FilesExtracted, msg.File)
-
-	case ShardCompletedMsg:
-		shard := m.Shards[msg.Shard]
-		shard.Completed = true
-		shard.CurrentChunk = ""
+	case downloader.XUpdMsg:
+		m.CurrentShard = msg.Shard
+		m.CurrentFile = msg.File
+		m.ShardChuncks[msg.Shard] = msg.Total
+		m.ShardChunck[msg.Shard] = msg.Idx
+		m.ShardTotalBytesOut[msg.Shard] = msg.TotalBytes
+		if msg.Error != nil {
+			m.error = msg.Error
+			return m, tea.Quit
+		}
 
 	case tea.QuitMsg:
 		return m, tea.Quit
 	}
-
-	return m, listenProgress(m.progressCh)
+	return m, listen(m.updatesCh)
 }
 
 func (m ExtractModel) View() string {
-	var b strings.Builder
-	for _, shardID := range m.ShardOrder {
-		shard := m.Shards[shardID]
-		progress := float64(shard.ExtractedChunks) / float64(shard.TotalChunks)
-		b.WriteString(fmt.Sprintf("Shard %02d: %d/%d chunks extracted %s\n", shardID, shard.ExtractedChunks, shard.TotalChunks, renderProgressBar(progress)))
-		if shard.CurrentChunk != "" {
-			b.WriteString(fmt.Sprintf("  Extracting: %s\n", shard.CurrentChunk))
+	s := ""
+	for i := 0; i <= m.MaxShard; i++ {
+		s += bold.Render(fmt.Sprintf("Shard %02d ", i))
+		percent := 0.0
+		if m.ShardChuncks[i] > 0 {
+			percent = float64(m.ShardChunck[i]) / float64(m.ShardChuncks[i])
 		}
-		if len(shard.FilesExtracted) > 0 {
-			b.WriteString("  Recent files:\n")
-			files := shard.FilesExtracted
-			if len(files) > 5 {
-				files = files[len(files)-5:]
-			}
-			for _, file := range files {
-				b.WriteString(fmt.Sprintf("    - %s\n", file))
-			}
-		}
-		if shard.Completed {
-			b.WriteString("  ✅ Shard Completed\n")
-		}
-		b.WriteString("\n")
+
+		bar := m.progressBar.ViewAs(percent)
+		s += fmt.Sprintf(" %04d/%04d chunks %s   [ %s ]\n", m.ShardChunck[i], m.ShardChuncks[i], bar, bytesHuman(m.ShardTotalBytesOut[i]))
 	}
-	b.WriteString("Press ctrl+c to quit.\n")
-	return b.String()
+	s += "\nx " + m.CurrentFile
+
+	if m.error != nil {
+		s += fmt.Sprintf("\n\n%v\n\n", m.error)
+	}
+	return s
 }
 
-func renderProgressBar(p float64) string {
-	width := 30
-	filled := int(p * float64(width))
-	if filled > width {
-		filled = width
+func bytesHuman(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
 	}
-	return "[" + strings.Repeat("■", filled) + strings.Repeat(" ", width-filled) + "]"
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
