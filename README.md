@@ -12,7 +12,7 @@ before starting a new snapchain node.
 - Concurrent chunk downloads: I have found that sometimes a chunk may download at very low speeds, having concurrent downloads removes the bottleneck and results in faster overall download.
 - Downloaded chunks are not automatically deleted.
 
-## Install
+## 1. Install
 
 Download, and unzip [the binary that corresponds to your platform](https://github.com/vrypan/snapsnapdown/releases)
 
@@ -22,12 +22,12 @@ If you want to build from source, clone the repo an run `make`
 
 Check: `snapsnapdown version`
 
-## Download the snapshot
+## 2. Download the snapshot
 
 Use `snapsnapdown download` to download the snapshot arhive to `./snapshot`. Or `snapsnapdown download --help` for more options.
 
 
-## Extract the snapshot
+## 3. Extract the snapshot
 
 The snapshot must be extracted to the `.rocks` directory relative to where you will run your docker container.
 
@@ -53,7 +53,7 @@ If no error is reported, you can extract the snapshot to `.rocks` like this (and
 cat ./snapshot/shard-0/* | tar tzvf - -C .rocks/
 ```
 
-## After extractiing the snapshot
+## 4. After extractiing the snapshot
 
 Now you can start your node and it will pick up syncing where the snapshot left it.
 
