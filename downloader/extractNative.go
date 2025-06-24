@@ -18,6 +18,16 @@ import (
 	"sync"
 )
 
+type XUpdMsg struct {
+	Shard      int
+	Idx        int
+	Total      int
+	File       string
+	TotalBytes int64
+	Error      error
+	Quit       bool
+}
+
 func ExtractWithNativeTar(rootSrcDir, dstDir string, shardId int, progressCh chan<- XUpdMsg) {
 	srcDir := filepath.Join(rootSrcDir, fmt.Sprintf("shard-%d", shardId))
 	entries, err := os.ReadDir(srcDir)
