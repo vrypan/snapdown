@@ -14,12 +14,15 @@ before starting a new snapchain node.
 
 ## Usage
 
-1. Download, and unzip the [binary that corresponds to your platform](https://github.com/vrypan/snapsnapdown/releases)
-2. run `./snapsnapdown --help` or `./snapsnapdown download --help`
+1. Download, and unzip [the binary that corresponds to your platform](https://github.com/vrypan/snapsnapdown/releases)
+2. Run `./snapsnapdown download` (`./snapsnapdown download --help` for options)
+
 
 If you want to build from source, clone the repo an type `make`
 
 ## After the all chuncks have been downloaded
+
+**The next version of `snapsnapdown` will offer archive extraction too, but until then:**
 
 The downloaded chunks will probably be in `./snapshot/shard-*`, unless you specified a different directory when downloading.
 
