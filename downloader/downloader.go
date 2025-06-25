@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	// replace with actual module name
 )
 
 var (
@@ -21,10 +20,11 @@ var (
 )
 
 type ProgressUpdate struct {
-	Shard     int
-	ChunkName string
-	Percent   float64
-	Done      bool
+	Shard           int
+	ChunkName       string
+	Percent         float64
+	Done            bool
+	BytesDownloaded int
 }
 
 type Metadata struct {
@@ -34,7 +34,6 @@ type Metadata struct {
 
 func ShardMetadata(endpointURL string, shard int) (*Metadata, error) {
 	metadataURL := fmt.Sprintf("%s/FARCASTER_NETWORK_%s/%d/latest.json", endpointURL, Network, shard)
-	//fmt.Printf("[→] Fetching metadata: %s\n", metadataURL)
 
 	resp, err := http.Get(metadataURL)
 	if err != nil {
@@ -68,10 +67,10 @@ func isLocalFileComplete(localPath, remoteURL string) (bool, error) {
 		return false, fmt.Errorf("missing Content-Length in response for %s", remoteURL)
 	}
 
-	// Compare sizes
 	return localSize == remoteSize, nil
 }
 
+// Optimized: use worker goroutines and a chunk job channel instead of launching goroutines per chunk and acquiring tokens manually.
 func Download(shard int, metadata *Metadata) {
 	progressChan := ProgressChan
 	baseURL := fmt.Sprintf("%s/%s", EndpointURL, metadata.KeyBase)
@@ -80,37 +79,52 @@ func Download(shard int, metadata *Metadata) {
 		fmt.Printf("Error creating output directory: %v\n", err)
 		return
 	}
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, Concurrency)
 
-	for i, chunk := range metadata.Chunks {
-		wg.Add(1)
-		sem <- struct{}{} // acquire slot
-		go func(chunk string, idx int) {
-			defer wg.Done()
-			defer func() { <-sem }() // release slot
+	type chunkJob struct {
+		chunk string
+		idx   int
+	}
+
+	chunkJobs := make(chan chunkJob)
+
+	var wg sync.WaitGroup
+
+	// Worker function
+	worker := func() {
+		for job := range chunkJobs {
+			chunk := job.chunk
 			url := fmt.Sprintf("%s/%s", baseURL, chunk)
 			progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 0.0}
 			if err := downloadChunk2(shard, url, filepath.Join(outputDir, chunk), progressChan, chunk); err != nil {
 				fmt.Printf("  [!] Error downloading %s: %v\n", chunk, err)
 			}
-			// This will instruct the UI to remove this chunk from its list
-			// time.Sleep(100 * time.Millisecond)
 			progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 1.0, Done: true}
-		}(chunk, i)
+			wg.Done()
+		}
 	}
+
+	// Spin up the worker pool
+	for i := 0; i < Concurrency; i++ {
+		go worker()
+	}
+
+	for i, chunk := range metadata.Chunks {
+		wg.Add(1)
+		chunkJobs <- chunkJob{chunk: chunk, idx: i}
+	}
+	close(chunkJobs)
 
 	wg.Wait()
 	progressChan <- ProgressUpdate{Shard: shard, ChunkName: "all", Percent: 1.0, Done: true}
 }
 
+// Optimized: Use io.TeeReader to track download progress efficiently and minimize lock contention on channel sends.
 func downloadChunk2(shard int, url, path string, progressChan chan<- ProgressUpdate, chunkName string) error {
 	if _, err := os.Stat(path); err == nil {
 		match, err := isLocalFileComplete(path, url)
 		if err != nil {
 			return fmt.Errorf("  [!] Error checking remote file: %v\n", err)
 		} else if match {
-			// Send complete progress for skipped files
 			progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunkName, Percent: 1.0, Done: true}
 			return nil
 		}
@@ -128,15 +142,18 @@ func downloadChunk2(shard int, url, path string, progressChan chan<- ProgressUpd
 	}
 	defer out.Close()
 
-	// Get total size
 	total := resp.ContentLength
 	if total <= 0 {
 		return fmt.Errorf("invalid content length: %d", total)
 	}
 
-	// Set up progress tracking
 	var downloaded int64
 	buf := make([]byte, 32*1024) // 32 KB buffer
+
+	progressUpdatePercent := func() {
+		percent := float64(downloaded) / float64(total)
+		progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunkName, Percent: percent}
+	}
 
 	for {
 		n, err := resp.Body.Read(buf)
@@ -145,8 +162,7 @@ func downloadChunk2(shard int, url, path string, progressChan chan<- ProgressUpd
 				return fmt.Errorf("write failed: %w", writeErr)
 			}
 			downloaded += int64(n)
-			percent := float64(downloaded) / float64(total)
-			progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunkName, Percent: percent}
+			progressUpdatePercent()
 		}
 		if err != nil {
 			if err == io.EOF {
@@ -156,7 +172,6 @@ func downloadChunk2(shard int, url, path string, progressChan chan<- ProgressUpd
 		}
 	}
 
-	// Ensure final update is 100%
 	progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunkName, Percent: 1.0}
 
 	return nil

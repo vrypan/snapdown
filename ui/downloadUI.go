@@ -85,6 +85,18 @@ func (m DownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case downloader.ProgressUpdate:
 		status := m.Status[msg.Shard]
+		if msg.ChunkName == "all" {
+			if len(m.ShardQueue) > 1 {
+				m.ShardQueue = m.ShardQueue[1:]
+				m.CurrentShard = m.ShardQueue[0]
+				go downloader.Download(m.CurrentShard, m.ShardMetadata[m.CurrentShard])
+				return m, waitForUpdates(m.progressChan)
+			}
+			return m, tea.Batch(
+				func() tea.Msg { return cleanupMsg(true) },
+				waitForUpdates(m.progressChan),
+			)
+		}
 		if msg.Done {
 			if !status.Downloaded[msg.ChunkName] {
 				status.Downloaded[msg.ChunkName] = true
@@ -97,18 +109,6 @@ func (m DownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// If it was already completed before being registered, clean it up now
 				delete(status.ActiveChunks, msg.ChunkName)
 			}
-		}
-		if msg.ChunkName == "all" {
-			if len(m.ShardQueue) > 1 {
-				m.ShardQueue = m.ShardQueue[1:]
-				m.CurrentShard = m.ShardQueue[0]
-				go downloader.Download(m.CurrentShard, m.ShardMetadata[m.CurrentShard])
-				return m, waitForUpdates(m.progressChan)
-			}
-			return m, tea.Batch(
-				func() tea.Msg { return cleanupMsg(true) },
-				waitForUpdates(m.progressChan),
-			)
 		}
 		return m, waitForUpdates(m.progressChan)
 	case cleanupMsg:
