@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -31,7 +32,8 @@ func downloadRun(cmd *cobra.Command, args []string) {
 		cmd.Help()
 		os.Exit(1)
 	}
-	downloader.OutputBasePath = args[0]
+	outputDir := args[0]
+	downloader.OutputBasePath = outputDir
 
 	concurrentJobs, _ := cmd.Flags().GetInt("jobs")
 	if concurrentJobs != 0 {
@@ -54,19 +56,52 @@ func downloadRun(cmd *cobra.Command, args []string) {
 		downloader.Network = "TESTNET"
 	}
 
-	for shard := 0; shard < 3; shard++ {
-		metadata, err := downloader.ShardMetadata(endpointURL, shard)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		shardMetadata[shard] = metadata
+	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
+		fmt.Printf("Error creating output directory: %v\n", err)
+		os.Exit(1)
 	}
-	fmt.Printf("\nDownloading Snapshot\n")
+
+	// Check if metadata.json already exists and, if so, load it
+	metadataFilePath := outputDir + string(os.PathSeparator) + "metadata.json"
+	if _, err := os.Stat(metadataFilePath); err == nil {
+		metadataData, err := os.ReadFile(metadataFilePath)
+		if err != nil {
+			fmt.Printf("Failed to read existing metadata.json: %v\n", err)
+			os.Exit(1)
+		}
+		err = json.Unmarshal(metadataData, &shardMetadata)
+		if err != nil {
+			fmt.Printf("Failed to parse existing metadata.json: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("\nResuming Snapshot Download\n")
+	} else {
+		for _, shard := range []int{0, 1, 2} {
+			metadata, err := downloader.ShardMetadata(endpointURL, shard)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			shardMetadata[shard] = metadata
+		}
+		// Serialize shardMetadata as JSON and save to outputDir/metadata.json
+		metadataJson, err := json.MarshalIndent(shardMetadata, "", "  ")
+		if err != nil {
+			fmt.Printf("Failed to serialize shard metadata: %v\n", err)
+			os.Exit(1)
+		}
+		err = os.WriteFile(metadataFilePath, metadataJson, 0644)
+		if err != nil {
+			fmt.Printf("Failed to write metadata.json: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("\nDownloading Snapshot\n")
+	}
+
 	fmt.Printf("Download path: %s\n\n", downloader.OutputBasePath)
 
 	go func() {
-		for shard := 0; shard < 3; shard++ {
+		for _, shard := range []int{0, 1, 2} {
 			downloader.Download(shard, shardMetadata[shard])
 		}
 		progressChan <- downloader.ProgressUpdate{Quit: true}
