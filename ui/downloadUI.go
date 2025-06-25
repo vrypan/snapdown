@@ -25,6 +25,7 @@ type DownloadModel struct {
 	progressChan  <-chan downloader.ProgressUpdate
 	Progress      progress.Model
 	miniProgress  progress.Model
+	Errors        []error
 }
 
 type cleanupMsg bool
@@ -78,8 +79,7 @@ func waitForUpdates(ch <-chan downloader.ProgressUpdate) tea.Cmd {
 func (m DownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "esc", "ctrl+c":
+		if k := msg.String(); k == "q" || k == "esc" || k == "ctrl+c" {
 			return m, tea.Quit
 		}
 
@@ -87,6 +87,10 @@ func (m DownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		status := m.Status[msg.Shard]
 		if msg.Quit {
 			return m, tea.Quit
+		}
+		if msg.Error != nil {
+			m.Errors = append(m.Errors, msg.Error)
+			return m, waitForUpdates(m.progressChan)
 		}
 		if msg.Done {
 			if !status.Downloaded[msg.ChunkName] {
@@ -97,7 +101,6 @@ func (m DownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			status.ActiveChunks[msg.ChunkName] = msg.Percent
 		}
-		return m, waitForUpdates(m.progressChan)
 	}
 	return m, waitForUpdates(m.progressChan)
 }
@@ -123,11 +126,18 @@ func (m DownloadModel) View() string {
 			for _, key := range keys {
 				v := m.Status[i].ActiveChunks[key]
 				s += fmt.Sprintf("          • %s %s\n", key, m.miniProgress.ViewAs(v))
+				if v == 1.0 {
+					// Clean up chunks that for some reason have not been deleted
+					delete(m.Status[i].ActiveChunks, key)
+				}
 			}
 			s += "\n"
 		} else {
 			s += "\n"
 		}
+	}
+	for _, e := range m.Errors {
+		s += fmt.Sprintf(" [!!!] %v", e)
 	}
 	return s
 }

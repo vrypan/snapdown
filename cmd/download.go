@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -16,7 +17,7 @@ var (
 
 // downloadCmd represents the download command
 var downloadCmd = &cobra.Command{
-	Use:     "download",
+	Use:     "download <output directory>",
 	Aliases: []string{"d"},
 	Short:   "Download the current snapshot",
 	Long:    ``,
@@ -25,14 +26,18 @@ var downloadCmd = &cobra.Command{
 
 func downloadRun(cmd *cobra.Command, args []string) {
 
+	if len(args) != 1 {
+		fmt.Println("Please set the output dir")
+		cmd.Help()
+		os.Exit(1)
+	}
+	downloader.OutputBasePath = args[0]
+
 	concurrentJobs, _ := cmd.Flags().GetInt("jobs")
 	if concurrentJobs != 0 {
 		downloader.Concurrency = 5
 	}
-	outputDir, _ := cmd.Flags().GetString("output")
-	if outputDir != "" {
-		downloader.OutputBasePath = outputDir
-	}
+
 	endpoint, _ := cmd.Flags().GetString("endpoint")
 	if endpoint != "" {
 		endpointURL = endpoint
@@ -79,11 +84,13 @@ func downloadRun(cmd *cobra.Command, args []string) {
 	if err := p.Start(); err != nil {
 		fmt.Println("error:", err)
 	}
+	if len(m.Errors) > 0 {
+		os.Exit(1)
+	}
 }
 func init() {
 	rootCmd.AddCommand(downloadCmd)
 	downloadCmd.Flags().IntP("jobs", "j", 5, "Number of concurrent downloads.")
-	downloadCmd.Flags().StringP("output", "o", "./snapshot", "Output directory")
 	downloadCmd.Flags().String("endpoint", endpointURL, "Snapshot server URL")
 	downloadCmd.Flags().Bool("size-checks", true, "If a chunk exists locally, check its size against the remote one.")
 	downloadCmd.Flags().Bool("testnet", false, "Use the testnet")

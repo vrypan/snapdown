@@ -26,6 +26,7 @@ type ProgressUpdate struct {
 	Done            bool
 	BytesDownloaded int
 	Quit            bool
+	Error           error
 }
 
 type Metadata struct {
@@ -71,6 +72,17 @@ func isLocalFileComplete(localPath, remoteURL string) (bool, error) {
 	return localSize == remoteSize, nil
 }
 
+// sendProgressUpdate tries to send ProgressUpdate to channel, non-blocking
+func sendProgressUpdate(ch chan<- ProgressUpdate, update ProgressUpdate) {
+	select {
+	case ch <- update:
+		// sent
+	default:
+		panic("Unable to push message to ProgressUpdate channel!!!")
+		// channel is full or unavailable, drop this update to avoid blocking
+	}
+}
+
 // Optimized: use worker goroutines and a chunk job channel instead of launching goroutines per chunk and acquiring tokens manually.
 func Download(shard int, metadata *Metadata) {
 	progressChan := ProgressChan
@@ -95,11 +107,14 @@ func Download(shard int, metadata *Metadata) {
 		for job := range chunkJobs {
 			chunk := job.chunk
 			url := fmt.Sprintf("%s/%s", baseURL, chunk)
-			progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 0.0}
+			sendProgressUpdate(progressChan, ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 0.0})
 			if err := downloadChunk(shard, url, filepath.Join(outputDir, chunk), progressChan, chunk); err != nil {
-				fmt.Printf("  [!] Error downloading %s: %v\n", chunk, err)
+				//fmt.Printf("  [!] Error downloading %s: %v\n", chunk, err)
+				sendProgressUpdate(progressChan, ProgressUpdate{
+					Error: fmt.Errorf("shard=%d, url=%s, path=%s, error=%v", shard, url, filepath.Join(outputDir, chunk), err),
+				})
 			}
-			progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 1.0, Done: true}
+			sendProgressUpdate(progressChan, ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 1.0, Done: true})
 			wg.Done()
 		}
 	}
@@ -120,12 +135,19 @@ func Download(shard int, metadata *Metadata) {
 
 // Optimized: Use io.TeeReader to track download progress efficiently and minimize lock contention on channel sends.
 func downloadChunk(shard int, url, path string, progressChan chan<- ProgressUpdate, chunkName string) error {
+	sendProgressUpdate := func(update ProgressUpdate) {
+		select {
+		case progressChan <- update:
+		default:
+		}
+	}
+
 	if _, err := os.Stat(path); err == nil {
 		match, err := isLocalFileComplete(path, url)
 		if err != nil {
 			return fmt.Errorf("  [!] Error checking remote file: %v\n", err)
 		} else if match {
-			progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunkName, Percent: 1.0, Done: true}
+			sendProgressUpdate(ProgressUpdate{Shard: shard, ChunkName: chunkName, Percent: 1.0, Done: true})
 			return nil
 		}
 	}
@@ -152,7 +174,7 @@ func downloadChunk(shard int, url, path string, progressChan chan<- ProgressUpda
 
 	progressUpdatePercent := func() {
 		percent := float64(downloaded) / float64(total)
-		progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunkName, Percent: percent}
+		sendProgressUpdate(ProgressUpdate{Shard: shard, ChunkName: chunkName, Percent: percent})
 	}
 
 	for {
