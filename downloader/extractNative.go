@@ -81,8 +81,6 @@ func ExtractWithNativeTar(rootSrcDir, dstDir string, shardId int, progressCh cha
 		return
 	}
 
-	//cmd.Stdout = io.Discard // Suppress tar's stdout completely
-
 	if err := cmd.Start(); err != nil {
 		progressCh <- XUpdMsg{
 			Shard: shardId,
@@ -147,7 +145,10 @@ func trackTarOutput(r io.ReadCloser, dstDir string, shardId int, progressCh chan
 	defer wg.Done()
 	defer r.Close()
 	scanner := bufio.NewScanner(r)
-	var totalBytesWritten int64 = 0
+	var (
+		lastFilePath      string
+		totalBytesWritten int64 = 0
+	)
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -155,13 +156,35 @@ func trackTarOutput(r io.ReadCloser, dstDir string, shardId int, progressCh chan
 		if strings.HasPrefix(line, "x ") {
 			fileName = strings.TrimPrefix(line, "x ")
 		} else {
-			// GNU tar on Linux just prints the filename without prefix
 			fileName = line
 		}
 		fullPath := filepath.Join(dstDir, fileName)
 
-		// Get file size after extraction
-		fileInfo, err := os.Lstat(fullPath)
+		// Report previous file size now (because it's done)
+		if lastFilePath != "" {
+			fileInfo, err := os.Lstat(lastFilePath)
+			var size int64 = 0
+			if err == nil && fileInfo.Mode().IsRegular() {
+				size = fileInfo.Size()
+			}
+
+			totalBytesWritten += size
+
+			// Send update message for the completed file
+			progressCh <- XUpdMsg{
+				Shard:      shardId,
+				TotalBytes: totalBytesWritten,
+				File:       lastFilePath,
+			}
+		}
+
+		// Track current file for the next iteration
+		lastFilePath = fullPath
+	}
+
+	// After loop ends, report the final file (it doesn't have a "next" file to trigger it)
+	if lastFilePath != "" {
+		fileInfo, err := os.Lstat(lastFilePath)
 		var size int64 = 0
 		if err == nil && fileInfo.Mode().IsRegular() {
 			size = fileInfo.Size()
@@ -169,11 +192,10 @@ func trackTarOutput(r io.ReadCloser, dstDir string, shardId int, progressCh chan
 
 		totalBytesWritten += size
 
-		// Send update message
 		progressCh <- XUpdMsg{
 			Shard:      shardId,
 			TotalBytes: totalBytesWritten,
-			File:       fullPath,
+			File:       lastFilePath,
 		}
 	}
 

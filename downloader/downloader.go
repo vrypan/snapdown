@@ -79,7 +79,6 @@ func isLocalFileComplete(localPath, remoteURL string) (bool, int64, error) {
 func sendProgressUpdate(ch chan<- ProgressUpdate, update ProgressUpdate) {
 	select {
 	case ch <- update:
-		// sent
 	default:
 		panic("Unable to push message to ProgressUpdate channel!!!")
 		// channel is full or unavailable, drop this update to avoid blocking
@@ -138,19 +137,19 @@ func Download(shard int, metadata *Metadata) {
 
 // Optimized: Use io.TeeReader to track download progress efficiently and minimize lock contention on channel sends.
 func downloadChunk(shard int, url, path string, progressChan chan<- ProgressUpdate, chunkName string) error {
-	sendProgressUpdate := func(update ProgressUpdate) {
-		select {
-		case progressChan <- update:
-		default:
-		}
+	/*sendProgressUpdate := func(update ProgressUpdate) {
+	select {
+	case progressChan <- update:
+	default:
 	}
+	}*/
 
 	if _, err := os.Stat(path); err == nil {
 		match, downloadedBytes, err := isLocalFileComplete(path, url)
 		if err != nil {
 			return fmt.Errorf("  [!] Error checking remote file: %v\n", err)
 		} else if match {
-			sendProgressUpdate(ProgressUpdate{
+			sendProgressUpdate(progressChan, ProgressUpdate{
 				Shard: shard, ChunkName: chunkName,
 				BytesDownloaded: downloadedBytes, BytesTotal: downloadedBytes,
 				Done: true})
@@ -176,15 +175,7 @@ func downloadChunk(shard int, url, path string, progressChan chan<- ProgressUpda
 	}
 
 	var downloaded int64
-	buf := make([]byte, 32*1024) // 32 KB buffer
-
-	progressUpdatePercent := func() {
-		sendProgressUpdate(ProgressUpdate{
-			Shard: shard, ChunkName: chunkName,
-			BytesDownloaded: downloaded,
-			BytesTotal:      total,
-		})
-	}
+	buf := make([]byte, 32*1024) // 32KB buffer
 
 	for {
 		n, err := resp.Body.Read(buf)
@@ -193,7 +184,11 @@ func downloadChunk(shard int, url, path string, progressChan chan<- ProgressUpda
 				return fmt.Errorf("write failed: %w", writeErr)
 			}
 			downloaded += int64(n)
-			progressUpdatePercent()
+			sendProgressUpdate(progressChan, ProgressUpdate{
+				Shard: shard, ChunkName: chunkName,
+				BytesDownloaded: downloaded,
+				BytesTotal:      total,
+			})
 		}
 		if err != nil {
 			if err == io.EOF {

@@ -27,7 +27,6 @@ var downloadCmd = &cobra.Command{
 }
 
 func downloadRun(cmd *cobra.Command, args []string) {
-
 	if len(args) != 1 {
 		fmt.Println("Please set the output dir")
 		cmd.Help()
@@ -128,7 +127,7 @@ func downloadRun(cmd *cobra.Command, args []string) {
 		progressChan <- downloader.ProgressUpdate{Quit: true}
 	}()
 
-	m := ui.NewDownloadModel(0, shardMetadata, progressChan)
+	m := ui.NewDownloadModel(0, shardMetadata, progressChan, concurrentJobs)
 	p := tea.NewProgram(m)
 
 	defer func() {

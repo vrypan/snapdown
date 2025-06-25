@@ -73,6 +73,7 @@ func (m ExtractModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			os.Exit(1)
 		}
 		if msg.Quit {
+			m.CurrentFile = ""
 			return m, tea.Quit
 		}
 		if msg.TotalBytes > 0 {
@@ -102,7 +103,9 @@ func (m ExtractModel) View() string {
 		bar := m.progressBar.ViewAs(percent)
 		s += fmt.Sprintf(" %04d/%04d chunks %s   [ %s ]\n", m.ShardChunck[i], m.ShardChuncks[i], bar, bytesHuman(m.ShardTotalBytesOut[i]))
 	}
-	s += fmt.Sprintf("\n          %sExtracting %s\n\n", m.spinner.View(), m.CurrentFile)
+	if m.CurrentFile != "" {
+		s += fmt.Sprintf("\n          %sExtracting %s\n\n", m.spinner.View(), m.CurrentFile)
+	}
 
 	if m.error != nil {
 		s += fmt.Sprintf("\n\n%v\n\n", m.error)
