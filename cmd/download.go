@@ -60,6 +60,13 @@ func downloadRun(cmd *cobra.Command, args []string) {
 	fmt.Printf("\nDownloading Snapshot\n")
 	fmt.Printf("Download path: %s\n\n", downloader.OutputBasePath)
 
+	go func() {
+		for shard := 0; shard < 3; shard++ {
+			downloader.Download(shard, shardMetadata[shard])
+		}
+		progressChan <- downloader.ProgressUpdate{Quit: true}
+	}()
+
 	m := ui.NewDownloadModel(0, shardMetadata, progressChan)
 	p := tea.NewProgram(m)
 

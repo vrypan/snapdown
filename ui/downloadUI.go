@@ -15,9 +15,10 @@ type ShardStatus struct {
 	DownloadedChunks int
 	ActiveChunks     map[string]float64
 	Downloaded       map[string]bool
+	BytesDownloaded  int64
+	Done             bool
 }
 type DownloadModel struct {
-	ShardQueue    []int
 	CurrentShard  int
 	ShardMetadata map[int]*downloader.Metadata
 	Status        map[int]*ShardStatus
@@ -55,7 +56,6 @@ func NewDownloadModel(shard int, metadata map[int]*downloader.Metadata, progress
 		status[i] = &shrd
 	}
 	return DownloadModel{
-		ShardQueue:    shards,
 		CurrentShard:  currentShard,
 		ShardMetadata: metadata,
 		Status:        status,
@@ -66,7 +66,7 @@ func NewDownloadModel(shard int, metadata map[int]*downloader.Metadata, progress
 }
 
 func (m DownloadModel) Init() tea.Cmd {
-	return m.downloadShardCmd(m.CurrentShard, m.ShardMetadata[m.CurrentShard])
+	return waitForUpdates(m.progressChan)
 }
 
 func waitForUpdates(ch <-chan downloader.ProgressUpdate) tea.Cmd {
@@ -85,17 +85,8 @@ func (m DownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case downloader.ProgressUpdate:
 		status := m.Status[msg.Shard]
-		if msg.ChunkName == "all" {
-			if len(m.ShardQueue) > 1 {
-				m.ShardQueue = m.ShardQueue[1:]
-				m.CurrentShard = m.ShardQueue[0]
-				go downloader.Download(m.CurrentShard, m.ShardMetadata[m.CurrentShard])
-				return m, waitForUpdates(m.progressChan)
-			}
-			return m, tea.Batch(
-				func() tea.Msg { return cleanupMsg(true) },
-				waitForUpdates(m.progressChan),
-			)
+		if msg.Quit {
+			return m, tea.Quit
 		}
 		if msg.Done {
 			if !status.Downloaded[msg.ChunkName] {
@@ -103,34 +94,12 @@ func (m DownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				status.DownloadedChunks++
 			}
 			delete(status.ActiveChunks, msg.ChunkName)
-		} else if msg.ChunkName != "all" {
+		} else {
 			status.ActiveChunks[msg.ChunkName] = msg.Percent
-			if status.Downloaded[msg.ChunkName] {
-				// If it was already completed before being registered, clean it up now
-				delete(status.ActiveChunks, msg.ChunkName)
-			}
 		}
 		return m, waitForUpdates(m.progressChan)
-	case cleanupMsg:
-		for _, shard := range m.Status {
-			for c := range shard.ActiveChunks {
-				if shard.Downloaded[c] {
-					delete(shard.ActiveChunks, c)
-					shard.DownloadedChunks++
-				}
-			}
-		}
-		return m, tea.Batch(
-			func() tea.Msg { return cleanupMsg(true) },
-			waitForUpdates(m.progressChan),
-		)
 	}
 	return m, waitForUpdates(m.progressChan)
-}
-
-func (m DownloadModel) downloadShardCmd(shard int, metadata *downloader.Metadata) tea.Cmd {
-	go downloader.Download(shard, metadata)
-	return waitForUpdates(m.progressChan)
 }
 
 func (m DownloadModel) View() string {

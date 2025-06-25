@@ -25,6 +25,7 @@ type ProgressUpdate struct {
 	Percent         float64
 	Done            bool
 	BytesDownloaded int
+	Quit            bool
 }
 
 type Metadata struct {
@@ -95,7 +96,7 @@ func Download(shard int, metadata *Metadata) {
 			chunk := job.chunk
 			url := fmt.Sprintf("%s/%s", baseURL, chunk)
 			progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 0.0}
-			if err := downloadChunk2(shard, url, filepath.Join(outputDir, chunk), progressChan, chunk); err != nil {
+			if err := downloadChunk(shard, url, filepath.Join(outputDir, chunk), progressChan, chunk); err != nil {
 				fmt.Printf("  [!] Error downloading %s: %v\n", chunk, err)
 			}
 			progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 1.0, Done: true}
@@ -115,11 +116,10 @@ func Download(shard int, metadata *Metadata) {
 	close(chunkJobs)
 
 	wg.Wait()
-	progressChan <- ProgressUpdate{Shard: shard, ChunkName: "all", Percent: 1.0, Done: true}
 }
 
 // Optimized: Use io.TeeReader to track download progress efficiently and minimize lock contention on channel sends.
-func downloadChunk2(shard int, url, path string, progressChan chan<- ProgressUpdate, chunkName string) error {
+func downloadChunk(shard int, url, path string, progressChan chan<- ProgressUpdate, chunkName string) error {
 	if _, err := os.Stat(path); err == nil {
 		match, err := isLocalFileComplete(path, url)
 		if err != nil {
@@ -171,8 +171,5 @@ func downloadChunk2(shard int, url, path string, progressChan chan<- ProgressUpd
 			return fmt.Errorf("read failed: %w", err)
 		}
 	}
-
-	progressChan <- ProgressUpdate{Shard: shard, ChunkName: chunkName, Percent: 1.0}
-
 	return nil
 }
