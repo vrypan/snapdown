@@ -24,14 +24,16 @@ type ProgressUpdate struct {
 	ChunkName       string
 	Percent         float64
 	Done            bool
-	BytesDownloaded int
+	BytesDownloaded int64
+	BytesTotal      int64
 	Quit            bool
 	Error           error
 }
 
 type Metadata struct {
-	KeyBase string   `json:"key_base"`
-	Chunks  []string `json:"chunks"`
+	KeyBase   string   `json:"key_base"`
+	Chunks    []string `json:"chunks"`
+	Timestamp int      `json:"timestamp"`
 }
 
 func ShardMetadata(endpointURL string, shard int) (*Metadata, error) {
@@ -50,26 +52,27 @@ func ShardMetadata(endpointURL string, shard int) (*Metadata, error) {
 	return &metadata, nil
 }
 
-func isLocalFileComplete(localPath, remoteURL string) (bool, error) {
+func isLocalFileComplete(localPath, remoteURL string) (bool, int64, error) {
 	info, err := os.Stat(localPath)
 	if err != nil {
-		return false, err
-	}
-	if !CheckSizes {
-		return true, nil
+		return false, 0, err
 	}
 	localSize := info.Size()
+	if !CheckSizes {
+		return true, localSize, nil
+	}
+
 	resp, err := http.Head(remoteURL)
 	if err != nil {
-		return false, err
+		return false, localSize, err
 	}
 	defer resp.Body.Close()
 	remoteSize := resp.ContentLength
 	if remoteSize == -1 {
-		return false, fmt.Errorf("missing Content-Length in response for %s", remoteURL)
+		return false, localSize, fmt.Errorf("missing Content-Length in response for %s", remoteURL)
 	}
 
-	return localSize == remoteSize, nil
+	return localSize == remoteSize, localSize, nil
 }
 
 // sendProgressUpdate tries to send ProgressUpdate to channel, non-blocking
@@ -107,14 +110,14 @@ func Download(shard int, metadata *Metadata) {
 		for job := range chunkJobs {
 			chunk := job.chunk
 			url := fmt.Sprintf("%s/%s", baseURL, chunk)
-			sendProgressUpdate(progressChan, ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 0.0})
+			//sendProgressUpdate(progressChan, ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 0.0})
 			if err := downloadChunk(shard, url, filepath.Join(outputDir, chunk), progressChan, chunk); err != nil {
 				//fmt.Printf("  [!] Error downloading %s: %v\n", chunk, err)
 				sendProgressUpdate(progressChan, ProgressUpdate{
 					Error: fmt.Errorf("shard=%d, url=%s, path=%s, error=%v", shard, url, filepath.Join(outputDir, chunk), err),
 				})
 			}
-			sendProgressUpdate(progressChan, ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 1.0, Done: true})
+			//sendProgressUpdate(progressChan, ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 1.0, Done: true})
 			wg.Done()
 		}
 	}
@@ -143,11 +146,14 @@ func downloadChunk(shard int, url, path string, progressChan chan<- ProgressUpda
 	}
 
 	if _, err := os.Stat(path); err == nil {
-		match, err := isLocalFileComplete(path, url)
+		match, downloadedBytes, err := isLocalFileComplete(path, url)
 		if err != nil {
 			return fmt.Errorf("  [!] Error checking remote file: %v\n", err)
 		} else if match {
-			sendProgressUpdate(ProgressUpdate{Shard: shard, ChunkName: chunkName, Percent: 1.0, Done: true})
+			sendProgressUpdate(ProgressUpdate{
+				Shard: shard, ChunkName: chunkName,
+				BytesDownloaded: downloadedBytes, BytesTotal: downloadedBytes,
+				Done: true})
 			return nil
 		}
 	}
@@ -173,8 +179,11 @@ func downloadChunk(shard int, url, path string, progressChan chan<- ProgressUpda
 	buf := make([]byte, 32*1024) // 32 KB buffer
 
 	progressUpdatePercent := func() {
-		percent := float64(downloaded) / float64(total)
-		sendProgressUpdate(ProgressUpdate{Shard: shard, ChunkName: chunkName, Percent: percent})
+		sendProgressUpdate(ProgressUpdate{
+			Shard: shard, ChunkName: chunkName,
+			BytesDownloaded: downloaded,
+			BytesTotal:      total,
+		})
 	}
 
 	for {

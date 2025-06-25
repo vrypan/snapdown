@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -75,6 +76,26 @@ func downloadRun(cmd *cobra.Command, args []string) {
 			os.Exit(1)
 		}
 		fmt.Printf("\nResuming Snapshot Download\n")
+		fmt.Printf("Snapshot Ages per shard: ")
+		for _, s := range shardMetadata {
+			// Convert timestamp (assumed unix seconds) to "X ago" format
+			t := int64(s.Timestamp) / 1000
+			now := time.Now().Unix()
+			diff := now - t
+			var rel string
+			switch {
+			case diff < 60:
+				rel = fmt.Sprintf("%ds ago", diff)
+			case diff < 3600:
+				rel = fmt.Sprintf("%dm ago", diff/60)
+			case diff < 86400:
+				rel = fmt.Sprintf("%dh ago", diff/3600)
+			default:
+				rel = fmt.Sprintf("%dd ago", diff/86400)
+			}
+			fmt.Printf(" [%s]", rel)
+		}
+		fmt.Println()
 	} else {
 		for _, shard := range []int{0, 1, 2} {
 			metadata, err := downloader.ShardMetadata(endpointURL, shard)
@@ -95,7 +116,7 @@ func downloadRun(cmd *cobra.Command, args []string) {
 			fmt.Printf("Failed to write metadata.json: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("\nDownloading Snapshot\n")
+		fmt.Printf("\nDownloading Latest Snapshot\n")
 	}
 
 	fmt.Printf("Download path: %s\n\n", downloader.OutputBasePath)

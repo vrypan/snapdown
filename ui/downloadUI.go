@@ -10,11 +10,15 @@ import (
 	"github.com/vrypan/snapsnapdown/downloader"
 )
 
+type Chunk struct {
+	Shard           int
+	Name            string
+	BytesTotal      int64
+	BytesDownloaded int64
+}
 type ShardStatus struct {
 	TotalChunks      int
 	DownloadedChunks int
-	ActiveChunks     map[string]float64
-	Downloaded       map[string]bool
 	BytesDownloaded  int64
 	Done             bool
 }
@@ -26,6 +30,7 @@ type DownloadModel struct {
 	Progress      progress.Model
 	miniProgress  progress.Model
 	Errors        []error
+	ActiveChunks  map[string]Chunk
 }
 
 type cleanupMsg bool
@@ -50,16 +55,15 @@ func NewDownloadModel(shard int, metadata map[int]*downloader.Metadata, progress
 	status := make(map[int]*ShardStatus, 3)
 	for i := range shards {
 		shrd := ShardStatus{}
-		shrd.ActiveChunks = make(map[string]float64)
 		shrd.TotalChunks = len(metadata[i].Chunks)
 		shrd.DownloadedChunks = 0
-		shrd.Downloaded = make(map[string]bool)
 		status[i] = &shrd
 	}
 	return DownloadModel{
 		CurrentShard:  currentShard,
 		ShardMetadata: metadata,
 		Status:        status,
+		ActiveChunks:  make(map[string]Chunk),
 		progressChan:  progressChan,
 		Progress:      p,
 		miniProgress:  p2,
@@ -92,14 +96,17 @@ func (m DownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Errors = append(m.Errors, msg.Error)
 			return m, waitForUpdates(m.progressChan)
 		}
-		if msg.Done {
-			if !status.Downloaded[msg.ChunkName] {
-				status.Downloaded[msg.ChunkName] = true
-				status.DownloadedChunks++
-			}
-			delete(status.ActiveChunks, msg.ChunkName)
-		} else {
-			status.ActiveChunks[msg.ChunkName] = msg.Percent
+		chunkId := fmt.Sprintf("%d-%s", msg.Shard, msg.ChunkName)
+		m.ActiveChunks[chunkId] = Chunk{
+			Shard:           msg.Shard,
+			Name:            msg.ChunkName,
+			BytesTotal:      msg.BytesTotal,
+			BytesDownloaded: msg.BytesDownloaded,
+		}
+
+		if msg.BytesDownloaded == msg.BytesTotal {
+			status.DownloadedChunks++
+			status.BytesDownloaded += msg.BytesDownloaded
 		}
 	}
 	return m, waitForUpdates(m.progressChan)
@@ -107,6 +114,11 @@ func (m DownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m DownloadModel) View() string {
 	s := ""
+	chunkKeys := make([]string, 0, len(m.ActiveChunks))
+	for k := range m.ActiveChunks {
+		chunkKeys = append(chunkKeys, k)
+	}
+	sort.Strings(chunkKeys)
 	for i := 0; i < 3; i++ {
 		s += bold.Render(fmt.Sprintf("Shard %02d ", i))
 		percent := 0.0
@@ -114,27 +126,24 @@ func (m DownloadModel) View() string {
 			percent = float64(m.Status[i].DownloadedChunks) / float64(m.Status[i].TotalChunks)
 		}
 		bar := m.Progress.ViewAs(percent)
-		s += fmt.Sprintf(" %04d/%04d chunks %s", m.Status[i].DownloadedChunks, m.Status[i].TotalChunks, bar)
-
-		if len(m.Status[i].ActiveChunks) > 0 {
-			s += "\n\n"
-			keys := make([]string, 0, len(m.Status[i].ActiveChunks))
-			for key := range m.Status[i].ActiveChunks {
-				keys = append(keys, key)
-			}
-			sort.Strings(keys)
-			for _, key := range keys {
-				v := m.Status[i].ActiveChunks[key]
-				s += fmt.Sprintf("          • %s %s\n", key, m.miniProgress.ViewAs(v))
-				if v == 1.0 {
-					// Clean up chunks that for some reason have not been deleted
-					delete(m.Status[i].ActiveChunks, key)
+		s += fmt.Sprintf(" %04d/%04d chunks %s   %s", m.Status[i].DownloadedChunks, m.Status[i].TotalChunks, bar, bytesHuman(m.Status[i].BytesDownloaded))
+		details := ""
+		for _, key := range chunkKeys {
+			c := m.ActiveChunks[key]
+			if c.Shard == i {
+				percent := float32(c.BytesDownloaded) / float32(c.BytesTotal)
+				details += fmt.Sprintf("          • %s %s   %08d/%08d\n", c.Name, m.miniProgress.ViewAs(float64(percent)), c.BytesDownloaded, c.BytesTotal)
+				if c.BytesDownloaded == c.BytesTotal {
+					delete(m.ActiveChunks, key)
 				}
+
 			}
-			s += "\n"
-		} else {
-			s += "\n"
 		}
+		if details != "" {
+			s += "\n\n" + details
+		}
+		s += "\n"
+
 	}
 	for _, e := range m.Errors {
 		s += fmt.Sprintf(" [!!!] %v", e)
