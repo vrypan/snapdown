@@ -38,12 +38,16 @@ func downloadRun(cmd *cobra.Command, args []string) {
 		endpointURL = endpoint
 	}
 	sizeChecks, _ := cmd.Flags().GetBool("size-checks")
+	useTestnet, _ := cmd.Flags().GetBool("testnet")
 
 	progressChan := make(chan downloader.ProgressUpdate, 1000)
 	shardMetadata := make(map[int]*downloader.Metadata)
 	downloader.EndpointURL = endpointURL
 	downloader.ProgressChan = progressChan
 	downloader.CheckSizes = sizeChecks
+	if useTestnet {
+		downloader.Network = "TESTNET"
+	}
 
 	for shard := 0; shard < 3; shard++ {
 		metadata, err := downloader.ShardMetadata(endpointURL, shard)
@@ -75,4 +79,5 @@ func init() {
 	downloadCmd.Flags().StringP("output", "o", "./snapshot", "Output directory")
 	downloadCmd.Flags().String("endpoint", endpointURL, "Snapshot server URL")
 	downloadCmd.Flags().Bool("size-checks", true, "If a chunk exists locally, check its size against the remote one.")
+	downloadCmd.Flags().Bool("testnet", false, "Use the testnet")
 }

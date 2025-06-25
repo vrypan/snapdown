@@ -17,6 +17,7 @@ var (
 	EndpointURL    string
 	ProgressChan   chan<- ProgressUpdate
 	CheckSizes     = true
+	Network        = "MAINNET"
 )
 
 type ProgressUpdate struct {
@@ -32,7 +33,7 @@ type Metadata struct {
 }
 
 func ShardMetadata(endpointURL string, shard int) (*Metadata, error) {
-	metadataURL := fmt.Sprintf("%s/FARCASTER_NETWORK_MAINNET/%d/latest.json", endpointURL, shard)
+	metadataURL := fmt.Sprintf("%s/FARCASTER_NETWORK_%s/%d/latest.json", endpointURL, Network, shard)
 	//fmt.Printf("[→] Fetching metadata: %s\n", metadataURL)
 
 	resp, err := http.Get(metadataURL)
