@@ -57,6 +57,10 @@ func ExtractWithNativeTar(rootSrcDir, dstDir string, shardId int, progressCh cha
 		return
 	}
 
+	if err := os.MkdirAll(dstDir, os.ModePerm); err != nil {
+		fmt.Printf("Error creating output directory: %v\n", err)
+		return
+	}
 	cmd := exec.Command("tar", "xzvf", "-", "-C", dstDir)
 
 	stdin, err := cmd.StdinPipe()
