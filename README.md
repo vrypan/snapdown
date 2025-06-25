@@ -16,7 +16,7 @@ before starting a new snapchain node.
 
 Download, and unzip [the binary that corresponds to your platform](https://github.com/vrypan/snapsnapdown/releases)
 
-Move it to a directoryt in your `$PATH`. 
+Move it to a directoryt in your `$PATH`.
 
 If you want to build from source, clone the repo an run `make`
 
@@ -26,16 +26,33 @@ Check it has been installed in your PATH:
 snapsnapdown version
 ```
 
-To see all options 
+To see all options
 ```
 snapsnapdown --help
+
+snapchain snapshot downloader
+
+Usage:
+  snapsnapdown [command]
+
+Available Commands:
+  completion  Generate the autocompletion script for the specified shell
+  download    Download the current snapshot
+  extract     Extract downloaded snapshot
+  help        Help about any command
+  version     Get the current version
+
+Flags:
+  -h, --help   help for snapsnapdown
+
+Use "snapsnapdown [command] --help" for more information about a command.
 ```
 
 ## 2. Download the snapshot
 
-Use 
+Use
 ```
-snapsnapdown download
+snapsnapdown download ./snapshot
 ```
 
 to download the snapshot arhive to `./snapshot`.
@@ -61,7 +78,7 @@ snapsnapdown extract --help
 
 ### Alternative method: Extract manually
 
-You can manually extract the archive, using `tar` if you prefer. 
+You can manually extract the archive, using `tar` if you prefer.
 
 You can test the data integrity using the following command (check with shards 0, 1 2)
 ```
