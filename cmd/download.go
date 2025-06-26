@@ -136,10 +136,15 @@ func downloadRun(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	if err := p.Start(); err != nil {
+	finalModel, err := p.Run()
+	if err != nil {
 		fmt.Println("error:", err)
 	}
-	if len(m.Errors) > 0 {
+	downloadModel := finalModel.(ui.DownloadModel)
+	if len(downloadModel.Errors) > 0 {
+		for _, e := range downloadModel.Errors {
+			fmt.Println(e)
+		}
 		os.Exit(1)
 	}
 }

@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -20,7 +19,7 @@ type ExtractModel struct {
 	updatesCh          <-chan downloader.XUpdMsg
 	progressBar        progress.Model
 	spinner            spinner.Model
-	error              error
+	Errors             []error
 }
 
 func NewExtractModel(maxShard int, updates <-chan downloader.XUpdMsg) ExtractModel {
@@ -59,8 +58,7 @@ func (m ExtractModel) Init() tea.Cmd {
 func (m ExtractModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "esc", "ctrl+c":
+		if k := msg.String(); k == "ctrl+c" {
 			return m, tea.Quit
 		}
 	case spinner.TickMsg:
@@ -69,8 +67,8 @@ func (m ExtractModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case downloader.XUpdMsg:
 		if msg.Error != nil {
-			m.error = msg.Error
-			os.Exit(1)
+			m.Errors = append(m.Errors, msg.Error)
+			//return m, tea.Quit
 		}
 		if msg.Quit {
 			m.CurrentFile = ""
@@ -92,23 +90,33 @@ func (m ExtractModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m ExtractModel) View() string {
-	s := ""
+	var s string
+	s = fmt.Sprintf("Shard  Chunks %-80s      Bytes Out\n", "")
+
 	for i := 0; i <= m.MaxShard; i++ {
-		s += bold.Render(fmt.Sprintf("Shard %02d ", i))
-		percent := 0.0
-		if m.ShardChuncks[i] > 0 {
-			percent = float64(m.ShardChunck[i]) / float64(m.ShardChuncks[i])
+		s += bold.Render(fmt.Sprintf("%02d ", i))
+		totalChunks := m.ShardChuncks[i]
+		currentChunk := m.ShardChunck[i]
+		totalBytes := m.ShardTotalBytesOut[i]
+
+		var percent float64
+		if totalChunks > 0 {
+			percent = float64(currentChunk) / float64(totalChunks)
+		} else {
+			percent = 0.0
 		}
 
 		bar := m.progressBar.ViewAs(percent)
-		s += fmt.Sprintf(" %04d/%04d chunks %s   [ %s ]\n", m.ShardChunck[i], m.ShardChuncks[i], bar, bytesHuman(m.ShardTotalBytesOut[i]))
+		s += fmt.Sprintf("    %04d/%04d %s   %s\n", currentChunk, totalChunks, bar, bytesHuman(totalBytes))
 	}
 	if m.CurrentFile != "" {
-		s += fmt.Sprintf("\n          %sExtracting %s\n\n", m.spinner.View(), m.CurrentFile)
+		s += fmt.Sprintf("\n%sExtracting %s\n\n", m.spinner.View(), m.CurrentFile)
 	}
-
-	if m.error != nil {
-		s += fmt.Sprintf("\n\n%v\n\n", m.error)
+	if len(m.Errors) > 0 {
+		s += "\n"
+		for _, e := range m.Errors {
+			s += fmt.Sprintf("[!] %v\n", e)
+		}
 	}
 	return s
 }

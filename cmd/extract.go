@@ -56,13 +56,18 @@ func extractRun(cmd *cobra.Command, args []string) {
 		progressCh <- downloader.XUpdMsg{Quit: true}
 	}()
 
-	p := tea.NewProgram(
-		ui.NewExtractModel(
-			2, progressCh,
-		),
-	)
-	if _, err := p.Run(); err != nil {
-		fmt.Println("Error running program:", err)
+	model := ui.NewExtractModel(2, progressCh)
+	p := tea.NewProgram(model)
+
+	finalModel, err := p.Run()
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+	extractModel := finalModel.(ui.ExtractModel)
+	if len(extractModel.Errors) > 0 {
+		for _, e := range extractModel.Errors {
+			fmt.Println(e)
+		}
 		os.Exit(1)
 	}
 }

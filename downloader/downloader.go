@@ -75,17 +75,18 @@ func isLocalFileComplete(localPath, remoteURL string) (bool, int64, error) {
 	return localSize == remoteSize, localSize, nil
 }
 
-// sendProgressUpdate tries to send ProgressUpdate to channel, non-blocking
 func sendProgressUpdate(ch chan<- ProgressUpdate, update ProgressUpdate) {
 	select {
 	case ch <- update:
 	default:
-		panic("Unable to push message to ProgressUpdate channel!!!")
-		// channel is full or unavailable, drop this update to avoid blocking
+		if update.BytesDownloaded < update.BytesTotal && update.Error == nil {
+			return
+		} else {
+			ch <- update
+		}
 	}
 }
 
-// Optimized: use worker goroutines and a chunk job channel instead of launching goroutines per chunk and acquiring tokens manually.
 func Download(shard int, metadata *Metadata) {
 	progressChan := ProgressChan
 	baseURL := fmt.Sprintf("%s/%s", EndpointURL, metadata.KeyBase)
@@ -94,34 +95,28 @@ func Download(shard int, metadata *Metadata) {
 		fmt.Printf("Error creating output directory: %v\n", err)
 		return
 	}
-
 	type chunkJob struct {
 		chunk string
 		idx   int
 	}
 
 	chunkJobs := make(chan chunkJob)
-
 	var wg sync.WaitGroup
 
-	// Worker function
 	worker := func() {
+		buf := make([]byte, 128*1024) // Pre-allocated buffer per worker
 		for job := range chunkJobs {
 			chunk := job.chunk
 			url := fmt.Sprintf("%s/%s", baseURL, chunk)
-			//sendProgressUpdate(progressChan, ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 0.0})
-			if err := downloadChunk(shard, url, filepath.Join(outputDir, chunk), progressChan, chunk); err != nil {
-				//fmt.Printf("  [!] Error downloading %s: %v\n", chunk, err)
+			if err := downloadChunk(shard, url, filepath.Join(outputDir, chunk), progressChan, chunk, buf); err != nil {
 				sendProgressUpdate(progressChan, ProgressUpdate{
 					Error: fmt.Errorf("shard=%d, url=%s, path=%s, error=%v", shard, url, filepath.Join(outputDir, chunk), err),
 				})
 			}
-			//sendProgressUpdate(progressChan, ProgressUpdate{Shard: shard, ChunkName: chunk, Percent: 1.0, Done: true})
 			wg.Done()
 		}
 	}
 
-	// Spin up the worker pool
 	for i := 0; i < Concurrency; i++ {
 		go worker()
 	}
@@ -131,19 +126,10 @@ func Download(shard int, metadata *Metadata) {
 		chunkJobs <- chunkJob{chunk: chunk, idx: i}
 	}
 	close(chunkJobs)
-
 	wg.Wait()
 }
 
-// Optimized: Use io.TeeReader to track download progress efficiently and minimize lock contention on channel sends.
-func downloadChunk(shard int, url, path string, progressChan chan<- ProgressUpdate, chunkName string) error {
-	/*sendProgressUpdate := func(update ProgressUpdate) {
-	select {
-	case progressChan <- update:
-	default:
-	}
-	}*/
-
+func downloadChunk(shard int, url, path string, progressChan chan<- ProgressUpdate, chunkName string, buf []byte) error {
 	if _, err := os.Stat(path); err == nil {
 		match, downloadedBytes, err := isLocalFileComplete(path, url)
 		if err != nil {
@@ -174,8 +160,9 @@ func downloadChunk(shard int, url, path string, progressChan chan<- ProgressUpda
 		return fmt.Errorf("invalid content length: %d", total)
 	}
 
+	const progressStep = 1 * 1024 * 1024
 	var downloaded int64
-	buf := make([]byte, 32*1024) // 32KB buffer
+	var lastReported int64
 
 	for {
 		n, err := resp.Body.Read(buf)
@@ -184,11 +171,14 @@ func downloadChunk(shard int, url, path string, progressChan chan<- ProgressUpda
 				return fmt.Errorf("write failed: %w", writeErr)
 			}
 			downloaded += int64(n)
-			sendProgressUpdate(progressChan, ProgressUpdate{
-				Shard: shard, ChunkName: chunkName,
-				BytesDownloaded: downloaded,
-				BytesTotal:      total,
-			})
+			if downloaded-lastReported >= progressStep || downloaded == total {
+				sendProgressUpdate(progressChan, ProgressUpdate{
+					Shard: shard, ChunkName: chunkName,
+					BytesDownloaded: downloaded,
+					BytesTotal:      total,
+				})
+				lastReported = downloaded
+			}
 		}
 		if err != nil {
 			if err == io.EOF {
