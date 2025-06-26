@@ -1,11 +1,11 @@
-# SnapSnapDown (Snapchain Snapshot Downloader)
+# SnapDown (Snapchain Snapshot Downloader)
 
-`snapsnapdown` lets you download a [Snapchain](https://github.com/farcaster_xyz/snapchain) snapshot
+`snapdown` lets you download a [Snapchain](https://github.com/farcaster_xyz/snapchain) snapshot
 before starting a new snapchain node.
 
 ![screenshot](screenshot.png)
 
-`snapsnapdown` gives you more flexibility than the embedded downloader:
+`snapdown` gives you more flexibility than the embedded downloader:
 
 - You can stop/start and it will pick up where you left.
 - When restarting, local chunk sizes will be compared to remote, and if they do not match they will be re-downloaded
@@ -14,7 +14,7 @@ before starting a new snapchain node.
 
 ## 1. Install
 
-Download, and unzip [the binary that corresponds to your platform](https://github.com/vrypan/snapsnapdown/releases)
+Download, and unzip [the binary that corresponds to your platform](https://github.com/vrypan/snapdown/releases)
 
 Move it to a directoryt in your `$PATH`.
 
@@ -23,17 +23,17 @@ If you want to build from source, clone the repo an run `make`
 Check it has been installed in your PATH:
 
 ```
-snapsnapdown version
+snapdown version
 ```
 
 To see all options
 ```
-snapsnapdown --help
+snapdown --help
 
 snapchain snapshot downloader
 
 Usage:
-  snapsnapdown [command]
+  snapdown [command]
 
 Available Commands:
   completion  Generate the autocompletion script for the specified shell
@@ -43,21 +43,21 @@ Available Commands:
   version     Get the current version
 
 Flags:
-  -h, --help   help for snapsnapdown
+  -h, --help   help for snapdown
 
-Use "snapsnapdown [command] --help" for more information about a command.
+Use "snapdown [command] --help" for more information about a command.
 ```
 
 ## 2. Download the snapshot
 
 Use
 ```
-snapsnapdown download ./snapshot
+snapdown download ./snapshot
 ```
 
 to download the snapshot arhive to `./snapshot`.
 
-Or `snapsnapdown download --help` for more options.
+Or `snapdown download --help` for more options.
 
 
 ## 3. Extract the snapshot
@@ -67,12 +67,12 @@ The snapshot must be extracted to the `.rocks` directory relative to where you w
 Use something like (adjust paths, if your setup is different)
 
 ```
-snapsnapdown extract ./snapshot .rocks
+snapdown extract ./snapshot .rocks
 ```
 
 You can also extract only one shard if you want. Check the options with
 ```
-snapsnapdown extract --help
+snapdown extract --help
 ```
 
 

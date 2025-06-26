@@ -6,8 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
-	"github.com/vrypan/snapsnapdown/downloader"
-	"github.com/vrypan/snapsnapdown/ui"
+	"github.com/vrypan/snapdown/downloader"
+	"github.com/vrypan/snapdown/ui"
 )
 
 var shards []int
@@ -19,7 +19,7 @@ var extractCmd = &cobra.Command{
 	Long: `
 If you downloaded the snapshot in ./snapshot you will probably
 want to run:
-  snapsnapdown extract ./snapshot .rocks
+  snapdown extract ./snapshot .rocks
 to extract the files in .rocks. Then you can start your node.
 
 WARNING! Files in <destination dir> will be overwritten!

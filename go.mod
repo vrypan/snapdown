@@ -1,4 +1,4 @@
-module github.com/vrypan/snapsnapdown
+module github.com/vrypan/snapdown
 
 go 1.24.3
 

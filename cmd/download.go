@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/vrypan/snapsnapdown/downloader"
-	"github.com/vrypan/snapsnapdown/ui"
+	"github.com/vrypan/snapdown/downloader"
+	"github.com/vrypan/snapdown/ui"
 )
 
 var (

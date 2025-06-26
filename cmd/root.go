@@ -10,7 +10,7 @@ var Version string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "snapsnapdown",
+	Use:   "snapdown",
 	Short: "snapchain snapshot downloader",
 
 	// Uncomment the following line if your bare application
