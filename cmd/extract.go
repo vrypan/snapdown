@@ -31,6 +31,7 @@ WARNING! Files in <destination dir> will be overwritten!
 func init() {
 	rootCmd.AddCommand(extractCmd)
 	extractCmd.Flags().IntSliceVar(&shards, "shards", []int{0, 1, 2}, "List of shard indices (e.g. --shard=0,1,2)")
+	extractCmd.Flags().Bool("no-tty", false, "Plan text output, no fancy UI")
 }
 
 func extractRun(cmd *cobra.Command, args []string) {
@@ -46,6 +47,7 @@ func extractRun(cmd *cobra.Command, args []string) {
 	dstDir := args[1]
 	progressCh := make(chan downloader.XUpdMsg, 1000)
 
+	notty, _ := cmd.Flags().GetBool("no-tty")
 	fmt.Printf("\nExtracting Snapshot")
 	fmt.Printf(" [%s] -> [%s]\n\n", srcDir, dstDir)
 
@@ -56,18 +58,26 @@ func extractRun(cmd *cobra.Command, args []string) {
 		progressCh <- downloader.XUpdMsg{Quit: true}
 	}()
 
-	model := ui.NewExtractModel(2, progressCh)
-	p := tea.NewProgram(model)
-
-	finalModel, err := p.Run()
-	if err != nil {
-		fmt.Println("error:", err)
-	}
-	extractModel := finalModel.(ui.ExtractModel)
-	if len(extractModel.Errors) > 0 {
-		for _, e := range extractModel.Errors {
-			fmt.Println(e)
+	if notty {
+		model := ui.NewNoTTYUnpack(2, progressCh)
+		model.Run()
+		if len(model.Errors) > 0 {
+			os.Exit(1)
 		}
-		os.Exit(1)
+	} else {
+		model := ui.NewExtractModel(2, progressCh)
+		p := tea.NewProgram(model)
+
+		finalModel, err := p.Run()
+		if err != nil {
+			fmt.Println("error:", err)
+		}
+		extractModel := finalModel.(ui.ExtractModel)
+		if len(extractModel.Errors) > 0 {
+			for _, e := range extractModel.Errors {
+				fmt.Println(e)
+			}
+			os.Exit(1)
+		}
 	}
 }

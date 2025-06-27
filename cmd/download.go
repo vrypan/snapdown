@@ -46,6 +46,7 @@ func downloadRun(cmd *cobra.Command, args []string) {
 	}
 	sizeChecks, _ := cmd.Flags().GetBool("size-checks")
 	useTestnet, _ := cmd.Flags().GetBool("testnet")
+	notty, _ := cmd.Flags().GetBool("no-tty")
 
 	progressChan := make(chan downloader.ProgressUpdate, 1000)
 	shardMetadata := make(map[int]*downloader.Metadata)
@@ -127,25 +128,34 @@ func downloadRun(cmd *cobra.Command, args []string) {
 		progressChan <- downloader.ProgressUpdate{Quit: true}
 	}()
 
-	m := ui.NewDownloadModel(0, shardMetadata, progressChan, concurrentJobs)
-	p := tea.NewProgram(m)
-
-	defer func() {
-		if err := p.ReleaseTerminal(); err != nil {
-			fmt.Println("failed to restore terminal:", err)
+	if notty {
+		nottyModel := ui.NewNoTTYDownload(shardMetadata, progressChan, concurrentJobs)
+		nottyModel.Run()
+		if len(nottyModel.Errors) > 0 {
+			os.Exit(1)
 		}
-	}()
+	} else {
+		m := ui.NewDownloadModel(0, shardMetadata, progressChan, concurrentJobs)
+		p := tea.NewProgram(m)
 
-	finalModel, err := p.Run()
-	if err != nil {
-		fmt.Println("error:", err)
-	}
-	downloadModel := finalModel.(ui.DownloadModel)
-	if len(downloadModel.Errors) > 0 {
-		for _, e := range downloadModel.Errors {
-			fmt.Println(e)
+		defer func() {
+			if err := p.ReleaseTerminal(); err != nil {
+				fmt.Println("failed to restore terminal:", err)
+			}
+		}()
+
+		finalModel, err := p.Run()
+		if err != nil {
+			fmt.Println("error:", err)
 		}
-		os.Exit(1)
+		downloadModel := finalModel.(ui.DownloadModel)
+
+		if len(downloadModel.Errors) > 0 {
+			for _, e := range downloadModel.Errors {
+				fmt.Println(e)
+			}
+			os.Exit(1)
+		}
 	}
 }
 func init() {
@@ -154,4 +164,5 @@ func init() {
 	downloadCmd.Flags().String("endpoint", endpointURL, "Snapshot server URL")
 	downloadCmd.Flags().Bool("size-checks", true, "If a chunk exists locally, check its size against the remote one.")
 	downloadCmd.Flags().Bool("testnet", false, "Use the testnet")
+	downloadCmd.Flags().Bool("no-tty", false, "Plan text output, no fancy UI")
 }
