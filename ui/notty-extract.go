@@ -6,7 +6,7 @@ import (
 	"github.com/vrypan/snapdown/downloader"
 )
 
-type NoTTYUnpack struct {
+type NoTtyExtract struct {
 	MaxShard           int
 	CurrentShard       int
 	CurrentFile        string
@@ -17,18 +17,16 @@ type NoTTYUnpack struct {
 	Errors             []error
 }
 
-func NewNoTTYUnpack(maxShard int, updates <-chan downloader.XUpdMsg) *NoTTYUnpack {
-	return &NoTTYUnpack{
+func NewNoTtyExtract(maxShard int, updates <-chan downloader.XUpdMsg) *NoTtyExtract {
+	return &NoTtyExtract{
 		MaxShard:           maxShard,
 		CurrentShard:       0,
 		updatesCh:          updates,
-		ShardChunks:        make(map[int]int, maxShard+1),
-		ShardChunk:         make(map[int]int, maxShard+1),
 		ShardTotalBytesOut: make(map[int]int64, maxShard+1),
 	}
 }
 
-func (l *NoTTYUnpack) Run() {
+func (l *NoTtyExtract) Run() {
 	for update := range l.updatesCh {
 		switch {
 		case update.Error != nil:
@@ -36,7 +34,7 @@ func (l *NoTTYUnpack) Run() {
 			log.Printf("[ERROR] %v\n", update.Error)
 		case update.Quit:
 			for s, bytes := range l.ShardTotalBytesOut {
-				log.Printf("Total bytes out for shard-%d: %s\n", s, bytesHuman(bytes))
+				log.Printf("[WROTE] Shard %d - Total bytes out %d (%s)\n", s, bytes, bytesHuman(bytes))
 			}
 			return
 		case update.TotalBytes > 0:
@@ -45,8 +43,6 @@ func (l *NoTTYUnpack) Run() {
 			log.Printf("[WROTE] %s (%d bytes)\n", update.File, update.TotalBytes)
 		default:
 			l.CurrentShard = update.Shard
-			l.ShardChunks[update.Shard] = update.Total
-			l.ShardChunk[update.Shard] = update.Idx
 		}
 	}
 }

@@ -25,7 +25,7 @@ type ShardStatus struct {
 	BytesDownloaded  int64
 	Done             bool
 }
-type DownloadModel struct {
+type TtyDownload struct {
 	CurrentShard      int
 	ShardMetadata     map[int]*downloader.Metadata
 	Status            map[int]*ShardStatus
@@ -42,7 +42,7 @@ type cleanupMsg bool
 
 var bold = lipgloss.NewStyle().Bold(true)
 
-func NewDownloadModel(shard int, metadata map[int]*downloader.Metadata, progressChan <-chan downloader.ProgressUpdate, maxJobs int) DownloadModel {
+func NewTtyDownload(shard int, metadata map[int]*downloader.Metadata, progressChan <-chan downloader.ProgressUpdate, maxJobs int) TtyDownload {
 	shards := []int{0, 1, 2}
 	currentShard := shards[0]
 	status := make(map[int]*ShardStatus, 3)
@@ -64,7 +64,7 @@ func NewDownloadModel(shard int, metadata map[int]*downloader.Metadata, progress
 	p2.Empty = ' '
 	p2.Width = 80
 	p2.ShowPercentage = true
-	return DownloadModel{
+	return TtyDownload{
 		CurrentShard:      currentShard,
 		ShardMetadata:     metadata,
 		Status:            status,
@@ -77,7 +77,7 @@ func NewDownloadModel(shard int, metadata map[int]*downloader.Metadata, progress
 	}
 }
 
-func (m DownloadModel) Init() tea.Cmd {
+func (m TtyDownload) Init() tea.Cmd {
 	return tea.Batch(
 		waitForUpdates(m.progressChan),
 		tea.Tick(time.Second, func(t time.Time) tea.Msg {
@@ -92,7 +92,7 @@ func waitForUpdates(ch <-chan downloader.ProgressUpdate) tea.Cmd {
 	}
 }
 
-func (m DownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m TtyDownload) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if k := msg.String(); k == "ctrl+c" {
@@ -149,7 +149,7 @@ func (m DownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, waitForUpdates(m.progressChan)
 }
 
-func (m DownloadModel) View() string {
+func (m TtyDownload) View() string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("Shard  Chunks %-80s      Bytes In\n", ""))
 
@@ -201,7 +201,7 @@ func (m DownloadModel) View() string {
 	return b.String()
 }
 
-func (m DownloadModel) debugInfo() string {
+func (m TtyDownload) debugInfo() string {
 	var mm runtime.MemStats
 	var s string
 	runtime.ReadMemStats(&mm)

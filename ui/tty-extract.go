@@ -9,7 +9,7 @@ import (
 	"github.com/vrypan/snapdown/downloader"
 )
 
-type ExtractModel struct {
+type TtyExtract struct {
 	MaxShard           int
 	CurrentShard       int
 	CurrentFile        string
@@ -22,7 +22,7 @@ type ExtractModel struct {
 	Errors             []error
 }
 
-func NewExtractModel(maxShard int, updates <-chan downloader.XUpdMsg) ExtractModel {
+func NewTtyExtract(maxShard int, updates <-chan downloader.XUpdMsg) TtyExtract {
 	p := progress.New(progress.WithSolidFill("#00ff00"))
 	p.Full = '■'
 	p.Empty = ' '
@@ -30,7 +30,7 @@ func NewExtractModel(maxShard int, updates <-chan downloader.XUpdMsg) ExtractMod
 	p.ShowPercentage = true
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
-	return ExtractModel{
+	return TtyExtract{
 		MaxShard:           maxShard,
 		CurrentShard:       0,
 		updatesCh:          updates,
@@ -48,14 +48,14 @@ func listen(ch <-chan downloader.XUpdMsg) tea.Cmd {
 	}
 }
 
-func (m ExtractModel) Init() tea.Cmd {
+func (m TtyExtract) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,      // Start the spinner updates
 		listen(m.updatesCh), // Your existing update listener
 	)
 }
 
-func (m ExtractModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m TtyExtract) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if k := msg.String(); k == "ctrl+c" {
@@ -89,7 +89,7 @@ func (m ExtractModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, listen(m.updatesCh)
 }
 
-func (m ExtractModel) View() string {
+func (m TtyExtract) View() string {
 	var s string
 	s = fmt.Sprintf("Shard  Chunks %-80s      Bytes Out\n", "")
 
@@ -119,17 +119,4 @@ func (m ExtractModel) View() string {
 		}
 	}
 	return s
-}
-
-func bytesHuman(bytes int64) string {
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }

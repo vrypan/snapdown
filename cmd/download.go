@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -26,10 +27,86 @@ var downloadCmd = &cobra.Command{
 	Run:     downloadRun,
 }
 
+// formatRelativeTime returns a user-friendly string for duration ago
+func formatRelativeTime(timestampMs int64) string {
+	t := timestampMs / 1000 // Convert ms to seconds
+	now := time.Now().Unix()
+	diff := now - t
+	switch {
+	case diff < 60:
+		return fmt.Sprintf("%ds ago", diff)
+	case diff < 3600:
+		return fmt.Sprintf("%dm ago", diff/60)
+	case diff < 86400:
+		return fmt.Sprintf("%dh ago", diff/3600)
+	default:
+		return fmt.Sprintf("%dd ago", diff/86400)
+	}
+}
+
+func mustMkdirAll(path string) {
+	if err := os.MkdirAll(path, os.ModePerm); err != nil {
+		fmt.Printf("Error creating output directory: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func mustReadFile(path string) []byte {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Printf("Failed to read %s: %v\n", path, err)
+		os.Exit(1)
+	}
+	return data
+}
+
+func mustWriteFile(path string, data []byte) {
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		fmt.Printf("Failed to write %s: %v\n", path, err)
+		os.Exit(1)
+	}
+}
+
+func mustUnmarshalMetadata(data []byte, meta *map[int]*downloader.Metadata) {
+	if err := json.Unmarshal(data, meta); err != nil {
+		fmt.Printf("Failed to parse metadata: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func mustMarshalMetadata(meta map[int]*downloader.Metadata) []byte {
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		fmt.Printf("Failed to serialize shard metadata: %v\n", err)
+		os.Exit(1)
+	}
+	return data
+}
+
+func fetchShardMetadata(endpoint string, shards []int) map[int]*downloader.Metadata {
+	shardMetadata := make(map[int]*downloader.Metadata)
+	for _, shard := range shards {
+		metadata, err := downloader.ShardMetadata(endpoint, shard)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		shardMetadata[shard] = metadata
+	}
+	return shardMetadata
+}
+
+func printShardAges(shardMetadata map[int]*downloader.Metadata) {
+	fmt.Printf("Snapshot Ages per shard: ")
+	for _, s := range shardMetadata {
+		fmt.Printf(" [%s]", formatRelativeTime(int64(s.Timestamp)))
+	}
+	fmt.Println()
+}
+
 func downloadRun(cmd *cobra.Command, args []string) {
 	if len(args) != 1 {
 		fmt.Println("Please set the output dir")
-		cmd.Help()
 		os.Exit(1)
 	}
 	outputDir := args[0]
@@ -57,85 +134,47 @@ func downloadRun(cmd *cobra.Command, args []string) {
 		downloader.Network = "TESTNET"
 	}
 
-	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
-		fmt.Printf("Error creating output directory: %v\n", err)
-		os.Exit(1)
-	}
+	mustMkdirAll(outputDir)
 
-	// Check if metadata.json already exists and, if so, load it
-	metadataFilePath := outputDir + string(os.PathSeparator) + "metadata.json"
+	metadataFilePath := filepath.Join(outputDir, "metadata.json")
+	shards := []int{0, 1, 2}
+
+	// Load or fetch shard metadata
 	if _, err := os.Stat(metadataFilePath); err == nil {
-		metadataData, err := os.ReadFile(metadataFilePath)
-		if err != nil {
-			fmt.Printf("Failed to read existing metadata.json: %v\n", err)
-			os.Exit(1)
-		}
-		err = json.Unmarshal(metadataData, &shardMetadata)
-		if err != nil {
-			fmt.Printf("Failed to parse existing metadata.json: %v\n", err)
-			os.Exit(1)
-		}
+		// Existing metadata: resume
+		metadataData := mustReadFile(metadataFilePath)
+		mustUnmarshalMetadata(metadataData, &shardMetadata)
+
 		fmt.Printf("\nResuming Snapshot Download\n")
-		fmt.Printf("Snapshot Ages per shard: ")
-		for _, s := range shardMetadata {
-			// Convert timestamp (assumed unix seconds) to "X ago" format
-			t := int64(s.Timestamp) / 1000
-			now := time.Now().Unix()
-			diff := now - t
-			var rel string
-			switch {
-			case diff < 60:
-				rel = fmt.Sprintf("%ds ago", diff)
-			case diff < 3600:
-				rel = fmt.Sprintf("%dm ago", diff/60)
-			case diff < 86400:
-				rel = fmt.Sprintf("%dh ago", diff/3600)
-			default:
-				rel = fmt.Sprintf("%dd ago", diff/86400)
-			}
-			fmt.Printf(" [%s]", rel)
-		}
-		fmt.Println()
+		printShardAges(shardMetadata)
 	} else {
-		for _, shard := range []int{0, 1, 2} {
-			metadata, err := downloader.ShardMetadata(endpointURL, shard)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-			shardMetadata[shard] = metadata
-		}
-		// Serialize shardMetadata as JSON and save to outputDir/metadata.json
-		metadataJson, err := json.MarshalIndent(shardMetadata, "", "  ")
-		if err != nil {
-			fmt.Printf("Failed to serialize shard metadata: %v\n", err)
-			os.Exit(1)
-		}
-		err = os.WriteFile(metadataFilePath, metadataJson, 0644)
-		if err != nil {
-			fmt.Printf("Failed to write metadata.json: %v\n", err)
-			os.Exit(1)
-		}
+		// Fresh: fetch metadata from remote
+		shardMetadata = fetchShardMetadata(endpointURL, shards)
+		metadataJson := mustMarshalMetadata(shardMetadata)
+		mustWriteFile(metadataFilePath, metadataJson)
+
 		fmt.Printf("\nDownloading Latest Snapshot\n")
 	}
 
 	fmt.Printf("Download path: %s\n\n", downloader.OutputBasePath)
 
 	go func() {
-		for _, shard := range []int{0, 1, 2} {
+		for _, shard := range shards {
 			downloader.Download(shard, shardMetadata[shard])
 		}
 		progressChan <- downloader.ProgressUpdate{Quit: true}
 	}()
 
 	if notty {
+		// Use plain text output
 		nottyModel := ui.NewNoTTYDownload(shardMetadata, progressChan, concurrentJobs)
 		nottyModel.Run()
 		if len(nottyModel.Errors) > 0 {
 			os.Exit(1)
 		}
 	} else {
-		m := ui.NewDownloadModel(0, shardMetadata, progressChan, concurrentJobs)
+		// Use fancy bubbletea interfcae
+		m := ui.NewTtyDownload(0, shardMetadata, progressChan, concurrentJobs)
 		p := tea.NewProgram(m)
 
 		defer func() {
@@ -148,7 +187,7 @@ func downloadRun(cmd *cobra.Command, args []string) {
 		if err != nil {
 			fmt.Println("error:", err)
 		}
-		downloadModel := finalModel.(ui.DownloadModel)
+		downloadModel := finalModel.(ui.TtyDownload)
 
 		if len(downloadModel.Errors) > 0 {
 			for _, e := range downloadModel.Errors {
@@ -158,11 +197,12 @@ func downloadRun(cmd *cobra.Command, args []string) {
 		}
 	}
 }
+
 func init() {
 	rootCmd.AddCommand(downloadCmd)
 	downloadCmd.Flags().IntP("jobs", "j", 5, "Number of concurrent downloads.")
 	downloadCmd.Flags().String("endpoint", endpointURL, "Snapshot server URL")
 	downloadCmd.Flags().Bool("size-checks", true, "If a chunk exists locally, check its size against the remote one.")
 	downloadCmd.Flags().Bool("testnet", false, "Use the testnet")
-	downloadCmd.Flags().Bool("no-tty", false, "Plan text output, no fancy UI")
+	downloadCmd.Flags().Bool("no-tty", false, "Plan text output")
 }
