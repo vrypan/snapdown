@@ -14,10 +14,6 @@ import (
 	"github.com/vrypan/snapdown/ui"
 )
 
-var (
-	endpointURL = "https://pub-d352dd8819104a778e20d08888c5a661.r2.dev"
-)
-
 // downloadCmd represents the download command
 var downloadCmd = &cobra.Command{
 	Use:     "download <output directory>",
