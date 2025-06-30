@@ -14,7 +14,7 @@ import (
 // dxCmd represents the download command
 var dxCmd = &cobra.Command{
 	Use:     "dx <download dir> <export dir>",
-	Aliases: []string{"d"},
+	Aliases: []string{""},
 	Short:   "Download and Extract the current snapshot",
 	Long: `This is equivalent to
   snapdown download <download dir> --no-tty && \
