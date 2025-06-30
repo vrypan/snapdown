@@ -62,7 +62,11 @@ Or `snapdown download --help` for more options.
 
 ## 3. Extract the snapshot
 
-The snapshot must be extracted to the `.rocks` directory relative to where you will run your docker container.
+> [!NOTE]
+> If you just want to extract the snapshot and start your node, and you
+> followed [the instructions here](https://github.com/farcasterxyz/snapchain?tab=readme-ov-file#running-a-node),
+> the snapshot must be extracted to `snapchain/.rocks`.
+
 
 Use something like (adjust paths, if your setup is different)
 
