@@ -100,3 +100,8 @@ cat ./snapshot/shard-0/* | tar tzvf - -C .rocks/
 Now you can start your node and it will pick up syncing where the snapshot left it.
 
 You will probably want to remove the downloaded chunks with `rm -rf ./snapshot` to free space on your disk.
+
+
+## Support this project
+
+[![Tip in Crypto](https://tip.md/badge.svg)](https://tip.md/vrypan)
